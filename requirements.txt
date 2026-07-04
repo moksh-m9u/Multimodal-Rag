@@ -1,0 +1,12 @@
+langchain>=0.3
+langchain-chroma>=0.2
+langchain-community>=0.3
+langchain-google-genai>=2.0
+langchain-huggingface>=0.1
+langchain-openai>=0.3
+unstructured[all-docs]>=0.15
+python-dotenv>=1.0
+streamlit>=1.28
+pandas>=2.0
+Pillow>=10.0
+plotly>=5.18
