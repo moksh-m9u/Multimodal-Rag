@@ -8,6 +8,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import json
 import base64
 import io
+import time
 from typing import Any, Optional
 
 import streamlit as st
@@ -740,20 +741,90 @@ def render_chat_page() -> None:
         st.session_state.chat_query = query
 
         from src.retrieval.search import retrieve_chunks
+        from src.retrieval.generate import generate_answer_stream
 
-        with st.spinner("Retrieving relevant chunks ..."):
-            chunks = retrieve_chunks(retriever, query)
-            st.session_state.chat_chunks = chunks
+        # --- Progressive chunk retrieval ---
+        status = st.status("Retrieving relevant chunks ...", expanded=True)
+        chunks = retrieve_chunks(retriever, query)
+        st.session_state.chat_chunks = chunks
+        status.update(
+            label=f"Retrieved {len(chunks)} chunks",
+            state="complete",
+            expanded=False,
+        )
 
-        from src.retrieval.generate import generate_answer
+        # --- Chunks with full detail, appearing progressively ---
+        with st.expander(f"**Referenced Chunks** — {len(chunks)} chunks", expanded=True):
+            for i, chunk in enumerate(chunks):
+                data = _extract_retrieval_chunk_data(chunk)
+                raw_text = data.get("raw_text", "")
+                tables = data.get("tables_html", [])
+                images_b64 = data.get("images_base64", [])
+                enhanced = chunk.page_content
 
-        with st.spinner("Generating answer with LLM ..."):
-            answer = generate_answer(chunks, query, verbose=False)
-            st.session_state.chat_answer = answer
+                label = (
+                    f"Chunk {i + 1}  —  "
+                    f"Images: {len(images_b64)}  |  "
+                    f"Tables: {len(tables)}  |  "
+                    f"Raw: {len(raw_text)} chars  |  "
+                    f"Enhanced: {len(enhanced)} chars"
+                )
 
-        st.rerun()
+                with st.expander(label, expanded=i == 0):
+                    tab_e, tab_r, tab_i, tab_t = st.tabs(
+                        ["Enhanced", "Raw Text", "Images", "Tables"]
+                    )
 
-    # Display results
+                    with tab_e:
+                        st.markdown(enhanced)
+
+                    with tab_r:
+                        wc = len(raw_text.split())
+                        st.metric("Words", wc)
+                        st.text_area(
+                            "raw",
+                            value=raw_text,
+                            height=250,
+                            disabled=True,
+                            label_visibility="collapsed",
+                        )
+
+                    with tab_i:
+                        if not images_b64:
+                            st.info("No images in this chunk.")
+                        else:
+                            for j, b64 in enumerate(images_b64):
+                                img = render_image_from_base64(b64)
+                                if img is None:
+                                    st.warning(f"Image {j + 1} malformed.")
+                                    continue
+                                st.image(img, width=400, caption=f"Image {j + 1}")
+
+                    with tab_t:
+                        if not tables:
+                            st.info("No tables in this chunk.")
+                        else:
+                            for j, html in enumerate(tables):
+                                st.markdown(f"**Table {j + 1}**")
+                                df = parse_table_html(html)
+                                if df is not None:
+                                    st.dataframe(df, use_container_width=True)
+                                else:
+                                    st.warning("Could not parse table.")
+                                    st.code(html, language="html")
+
+                time.sleep(0.05)
+
+        # --- Streaming answer ---
+        answer_placeholder = st.empty()
+        collected = ""
+        for token in generate_answer_stream(chunks, query, verbose=False):
+            collected += token
+            answer_placeholder.markdown(f"### Answer\n\n{collected}▌")
+        answer_placeholder.markdown(f"### Answer\n\n{collected}")
+        st.session_state.chat_answer = collected
+
+    # Display results from session state (on subsequent runs)
     answer = st.session_state.get("chat_answer")
     chunks = st.session_state.get("chat_chunks")
 
@@ -761,72 +832,72 @@ def render_chat_page() -> None:
         st.info("Enter a query and press Search to get started.")
         return
 
+    if submitted and query.strip():
+        return
+
     # Answer
-    with st.container(border=True):
-        st.markdown("### Answer")
-        st.markdown(answer)
+    st.markdown("### Answer")
+    st.markdown(answer)
 
     # Referenced chunks
-    st.markdown("### Referenced Chunks")
-    st.caption(f"The answer was built from {len(chunks)} retrieved chunks.")
+    with st.expander(f"**Referenced Chunks** — {len(chunks)} chunks", expanded=True):
+        for i, chunk in enumerate(chunks):
+            data = _extract_retrieval_chunk_data(chunk)
+            raw_text = data.get("raw_text", "")
+            tables = data.get("tables_html", [])
+            images_b64 = data.get("images_base64", [])
+            enhanced = chunk.page_content
 
-    for i, chunk in enumerate(chunks):
-        data = _extract_retrieval_chunk_data(chunk)
-        raw_text = data.get("raw_text", "")
-        tables = data.get("tables_html", [])
-        images_b64 = data.get("images_base64", [])
-        enhanced = chunk.page_content
-
-        label = (
-            f"Chunk {i + 1}  —  "
-            f"Images: {len(images_b64)}  |  "
-            f"Tables: {len(tables)}  |  "
-            f"Raw: {len(raw_text)} chars  |  "
-            f"Enhanced: {len(enhanced)} chars"
-        )
-
-        with st.expander(label, expanded=i == 0):
-            tab_e, tab_r, tab_i, tab_t = st.tabs(
-                ["Enhanced", "Raw Text", "Images", "Tables"]
+            label = (
+                f"Chunk {i + 1}  —  "
+                f"Images: {len(images_b64)}  |  "
+                f"Tables: {len(tables)}  |  "
+                f"Raw: {len(raw_text)} chars  |  "
+                f"Enhanced: {len(enhanced)} chars"
             )
 
-            with tab_e:
-                st.markdown(enhanced)
-
-            with tab_r:
-                wc = len(raw_text.split())
-                st.metric("Words", wc)
-                st.text_area(
-                    "raw",
-                    value=raw_text,
-                    height=250,
-                    disabled=True,
-                    label_visibility="collapsed",
+            with st.expander(label, expanded=i == 0):
+                tab_e, tab_r, tab_i, tab_t = st.tabs(
+                    ["Enhanced", "Raw Text", "Images", "Tables"]
                 )
 
-            with tab_i:
-                if not images_b64:
-                    st.info("No images in this chunk.")
-                else:
-                    for j, b64 in enumerate(images_b64):
-                        img = render_image_from_base64(b64)
-                        if img is None:
-                            st.warning(f"Image {j + 1} malformed.")
-                            continue
-                        st.image(img, width=400, caption=f"Image {j + 1}")
+                with tab_e:
+                    st.markdown(enhanced)
 
-            with tab_t:
-                if not tables:
-                    st.info("No tables in this chunk.")
-                else:
-                    for j, html in enumerate(tables):
-                        st.markdown(f"**Table {j + 1}**")
-                        df = parse_table_html(html)
-                        if df is not None:
-                            st.dataframe(df, use_container_width=True)
-                        else:
-                            st.warning("Could not parse table.")
-                            st.code(html, language="html")
+                with tab_r:
+                    wc = len(raw_text.split())
+                    st.metric("Words", wc)
+                    st.text_area(
+                        "raw",
+                        value=raw_text,
+                        height=250,
+                        disabled=True,
+                        label_visibility="collapsed",
+                    )
+
+                with tab_i:
+                    if not images_b64:
+                        st.info("No images in this chunk.")
+                    else:
+                        for j, b64 in enumerate(images_b64):
+                            img = render_image_from_base64(b64)
+                            if img is None:
+                                st.warning(f"Image {j + 1} malformed.")
+                                continue
+                            st.image(img, width=400, caption=f"Image {j + 1}")
+
+                with tab_t:
+                    if not tables:
+                        st.info("No tables in this chunk.")
+                    else:
+                        for j, html in enumerate(tables):
+                            st.markdown(f"**Table {j + 1}**")
+                            df = parse_table_html(html)
+                            if df is not None:
+                                st.dataframe(df, use_container_width=True)
+                            else:
+                                st.warning("Could not parse table.")
+                                st.code(html, language="html")
 
 
 def main() -> None:
