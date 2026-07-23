@@ -10,31 +10,73 @@ from config.settings import GENERATION_MODEL, GENERATION_TEMPERATURE
 
 
 def _extract_original_data(chunk: Document) -> dict:
-    """Extract and parse original_content metadata from a chunk."""
+    """Extract and parse original_content metadata from a chunk.
+
+    Handles both nested and flattened ChromaDB metadata schemas.
+    """
     raw = chunk.metadata.get("original_content")
-    if raw is None:
-        return {}
-    if isinstance(raw, str):
-        return json.loads(raw)
-    return raw
+    if raw is not None:
+        if isinstance(raw, str):
+            return json.loads(raw)
+        return raw
+
+    raw_text = chunk.metadata.get("raw_text", "")
+    tables_raw = chunk.metadata.get("tables_html", "[]")
+    tables_html = json.loads(tables_raw) if isinstance(tables_raw, str) else tables_raw
+
+    images_base64: list[str] = []
+    image_paths_raw = chunk.metadata.get("image_paths", "[]")
+    image_paths = json.loads(image_paths_raw) if isinstance(image_paths_raw, str) else image_paths_raw
+
+    from pathlib import Path as _P
+    import base64 as _b64
+
+    project_root = _P(__file__).resolve().parent.parent.parent
+    for p in image_paths:
+        clean = p.lstrip("./")
+        img_path = project_root / clean
+        try:
+            img_bytes = img_path.read_bytes()
+            images_base64.append(_b64.b64encode(img_bytes).decode())
+        except Exception as e:
+            print(f"  [WARN] Could not read image for generation: {img_path} ({e})")
+
+    return {
+        "raw_text": raw_text,
+        "tables_html": tables_html,
+        "images_base64": images_base64,
+    }
 
 
 def _build_text_prompt(chunks: list[Document], query: str) -> str:
-    """Build the text portion of the prompt from retrieved chunks."""
+    """Build the text portion of the prompt from retrieved chunks.
+
+    Sends enhanced summaries as primary context, with HTML tables appended.
+    Images are sent separately via _collect_images.
+    """
     parts = [
-        f"Based on the following documents, please answer this question: {query}",
-        "",
-        "CONTENT TO ANALYZE:",
+        "You are given retrieved chunks from a technical document.\n"
+        "Each chunk contains:\n"
+        "- a searchable summary of the original content,\n"
+        "- optional HTML tables,\n"
+        "- optional attached figures/images.\n\n"
+        "Treat the summaries as authoritative representations of the document.\n"
+        "Do NOT claim information is absent unless you have examined ALL provided chunks.\n"
+        "If a chunk explicitly contains the answer, answer directly using that chunk.\n"
+        "Use both the text summaries and the attached images when answering.\n",
+        f"QUESTION: {query}\n",
+        "RETRIEVED CONTEXT:",
         "",
     ]
 
-    for i, chunk in enumerate(chunks):
-        parts.append(f"--- Document {i + 1} ---")
+    # DIAGNOSTIC: only top 1 chunk, no images — test if Gemini receives text
+    for i, chunk in enumerate(chunks[:1]):
+        enhanced = chunk.page_content
+        if enhanced:
+            parts.append(f"--- Chunk {i + 1} ---")
+            parts.append(f"SUMMARY:\n{enhanced.strip()}\n")
 
         original_data = _extract_original_data(chunk)
-        raw_text = original_data.get("raw_text", "")
-        if raw_text:
-            parts.append(f"TEXT:\n{raw_text}\n")
 
         tables_html = original_data.get("tables_html", [])
         if tables_html:
@@ -45,13 +87,9 @@ def _build_text_prompt(chunks: list[Document], query: str) -> str:
         parts.append("")
 
     parts.append(
-        "Please provide a clear, comprehensive answer using the text, tables, and "
-        "images above. If the documents don't contain sufficient information to answer "
-        'the question, say "I don\'t have enough information to answer that question '
-        'based on the provided documents."'
+        "The images above are figures from the document. "
+        "Use the summaries, tables, and images together to provide a detailed answer."
     )
-    parts.append("")
-    parts.append("ANSWER:")
 
     return "\n".join(parts)
 
@@ -75,12 +113,14 @@ def _build_message_content(chunks: list[Document], query: str) -> list[dict]:
     """Build the full multimodal message content list."""
     text_prompt = _build_text_prompt(chunks, query)
     content: list[dict] = [{"type": "text", "text": text_prompt}]
-    content.extend(_collect_images(chunks))
+    # DIAGNOSTIC: disable images to test text-only
+    # content.extend(_collect_images(chunks))
     return content
 
 
 def _create_llm():
     """Create the Gemini LLM instance."""
+    print(f"\n  Using model: {GENERATION_MODEL}")
     return ChatGoogleGenerativeAI(
         model=GENERATION_MODEL,
         temperature=GENERATION_TEMPERATURE,
@@ -103,13 +143,7 @@ def generate_answer(
     try:
         llm = _create_llm()
         message_content = _build_message_content(chunks, query)
-
-        if verbose:
-            image_count = sum(
-                1 for x in message_content if x["type"] == "image_url"
-            )
-            print(f"Message parts: {len(message_content)}")
-            print(f"Images attached: {image_count}")
+        _save_prompt_debug(message_content)
 
         message = HumanMessage(content=message_content)
         response = llm.invoke([message])
@@ -122,6 +156,15 @@ def generate_answer(
         return f"Sorry, could not complete response due to: {e}"
 
 
+def _save_prompt_debug(message_content: list[dict]) -> None:
+    """Dump the full prompt to last_prompt.txt for inspection."""
+    from pathlib import Path as _P
+    text_content = next(x["text"] for x in message_content if x["type"] == "text")
+    image_count = sum(1 for x in message_content if x["type"] == "image_url")
+    _P("last_prompt.txt").write_text(text_content, encoding="utf-8")
+    print(f"\n  Prompt saved to last_prompt.txt ({len(text_content)} chars, {image_count} images)\n")
+
+
 def generate_answer_stream(
     chunks: list[Document], query: str, verbose: bool = False
 ):
@@ -131,14 +174,17 @@ def generate_answer_stream(
     """
     try:
         llm = _create_llm()
-        message_content = _build_message_content(chunks, query)
 
-        if verbose:
-            image_count = sum(
-                1 for x in message_content if x["type"] == "image_url"
-            )
-            print(f"Message parts: {len(message_content)}")
-            print(f"Images attached: {image_count}")
+        print(f"\n  {len(chunks)} chunks received by generation")
+        for ci, c in enumerate(chunks[:5]):
+            pc = c.page_content or ""
+            od = _extract_original_data(c)
+            print(f"    Chunk {ci+1}: summary={len(pc)} chars, "
+                  f"tables={len(od.get('tables_html',[]))}, "
+                  f"images={len(od.get('images_base64',[]))}")
+
+        message_content = _build_message_content(chunks, query)
+        _save_prompt_debug(message_content)
 
         message = HumanMessage(content=message_content)
         for chunk in llm.stream([message]):
@@ -147,6 +193,5 @@ def generate_answer_stream(
 
     except Exception as e:
         error_msg = f"Answer generation failed: {e}"
-        if verbose:
-            print(error_msg)
+        print(error_msg)
         yield f"Sorry, could not complete response due to: {e}"

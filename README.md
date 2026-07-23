@@ -21,6 +21,7 @@ A production-ready multimodal RAG pipeline that ingests PDFs (text, tables, imag
 | ![chunk-explorer](assets/dashboard-chunk-explorer.png) | ![analytics](assets/dashboard-analytics.png) | ![query](assets/dashboard-query.png) |
 
 ---
+![alt text](image.png)
 ## Architecture
 
 The pipeline handles **text**, **images**, and **tables** at every stage — from PDF extraction through retrieval and answer generation. Below is how each modality flows through the system.

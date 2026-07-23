@@ -1,0 +1,13 @@
+# AN699
+
+Why are analog filters preferred for systems operating above approximately 5 kHz in AN699 ?
+
+State the Nyquist criterion.   
+
+Why is Nyquist frequency 10 kHz?
+
+
+
+# LM2596
+
+pinout strcuture and configuration of LM2596
