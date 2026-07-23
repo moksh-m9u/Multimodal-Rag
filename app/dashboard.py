@@ -787,6 +787,7 @@ def render_chat_page() -> None:
                             height=250,
                             disabled=True,
                             label_visibility="collapsed",
+                            key=f"raw_{i}"
                         )
 
                     with tab_i:
@@ -873,6 +874,7 @@ def render_chat_page() -> None:
                         height=250,
                         disabled=True,
                         label_visibility="collapsed",
+                        key=f"raw_{i}",
                     )
 
                 with tab_i:
