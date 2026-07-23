@@ -14,7 +14,8 @@ EMBEDDING_MODEL: str = "ibm-granite/granite-embedding-97m-multilingual-r2"
 VISION_MODEL: str = "zai-org/GLM-4.5V"
 GENERATION_MODEL: str = "gemini-2.5-flash"
 
-CHROMA_PERSIST_DIR: str = "dbv1/chroma_db"
+CHROMA_PERSIST_DIR: str = "dbv2/chroma_db"
+IMAGES_DIR: str = "dbv2/images"
 
 RETRIEVAL_K: int = 10
 RETRIEVAL_FETCH_K: int = 20
