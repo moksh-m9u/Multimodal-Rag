@@ -9,6 +9,7 @@ import json
 import base64
 import io
 import time
+from pathlib import Path
 from typing import Any, Optional
 
 import streamlit as st
@@ -52,6 +53,18 @@ def init_state() -> None:
 @st.cache_data
 def load_json(file: Any) -> list[dict]:
     return json.load(file)
+
+
+def load_json_from_path(path: str) -> list[dict]:
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def list_json_files() -> list[str]:
+    json_dir = Path(__file__).resolve().parent.parent / "json"
+    if not json_dir.exists():
+        return []
+    return sorted(f.name for f in json_dir.glob("*.json"))
 
 
 def _oc(meta: dict) -> dict:
@@ -165,6 +178,25 @@ def render_sidebar() -> None:
     with st.sidebar:
         st.header("Data")
 
+        json_files = list_json_files()
+        if json_files:
+            selected_file = st.selectbox(
+                "Select a datasheet",
+                options=[""] + json_files,
+                format_func=lambda x: "Choose a file..." if x == "" else x,
+                key="json_selectbox",
+            )
+            if selected_file:
+                json_path = Path(__file__).resolve().parent.parent / "json" / selected_file
+                if selected_file != st.session_state.get("file_name"):
+                    st.session_state.data = load_json_from_path(str(json_path))
+                    st.session_state.file_name = selected_file
+                    st.session_state.filtered_indices = None
+                    st.session_state.selected_chunk_id = None
+                    st.rerun()
+
+        st.divider()
+        st.caption("Or upload your own JSON")
         uploaded = st.file_uploader(
             "Upload JSON", type=["json"], label_visibility="collapsed"
         )

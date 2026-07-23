@@ -70,7 +70,7 @@ def _build_text_prompt(chunks: list[Document], query: str) -> str:
     ]
 
     # DIAGNOSTIC: only top 1 chunk, no images — test if Gemini receives text
-    for i, chunk in enumerate(chunks[:1]):
+    for i, chunk in enumerate(chunks[:5]):
         enhanced = chunk.page_content
         if enhanced:
             parts.append(f"--- Chunk {i + 1} ---")
@@ -113,8 +113,7 @@ def _build_message_content(chunks: list[Document], query: str) -> list[dict]:
     """Build the full multimodal message content list."""
     text_prompt = _build_text_prompt(chunks, query)
     content: list[dict] = [{"type": "text", "text": text_prompt}]
-    # DIAGNOSTIC: disable images to test text-only
-    # content.extend(_collect_images(chunks))
+    content.extend(_collect_images(chunks))
     return content
 
 
