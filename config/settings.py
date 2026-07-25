@@ -12,7 +12,7 @@ HUGGINGFACEHUB_API_TOKEN: str = os.getenv("HUGGINGFACEHUB_API_TOKEN", "")
 
 EMBEDDING_MODEL: str = "ibm-granite/granite-embedding-97m-multilingual-r2"
 VISION_MODEL: str = "zai-org/GLM-4.5V"
-GENERATION_MODEL: str = "gemini-2.5-flash"
+GENERATION_MODEL: str = "Gemini 2.5 Flash-Lite"
 
 CHROMA_PERSIST_DIR: str = "dbv2/chroma_db"
 IMAGES_DIR: str = "dbv2/images"
