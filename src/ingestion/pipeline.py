@@ -1,15 +1,26 @@
-"""Orchestrator: ingestion pipeline and vector store creation."""
+"""Orchestrator: ingestion pipeline and vector store creation.
+
+Ties the extraction, chunking, enrichment and embedding steps together and
+offers two entry points: :func:`create_vector_store` to embed an already
+processed document list, and :func:`run_complete_ingestion_pipeline` to run
+everything from a PDF in one call.
+"""
+
+from __future__ import annotations
 
 from langchain_chroma import Chroma
 from langchain_core.documents import Document
 from langsmith import traceable
 
-from config.settings import CHROMA_PERSIST_DIR, CHROMA_COLLECTION_METADATA
+from config.settings import CHROMA_COLLECTION_METADATA, CHROMA_PERSIST_DIR
 from src.embed import load_embedding_model
-from src.ingestion.extract import partition_document
 from src.ingestion.chunk import create_chunks_by_title
 from src.ingestion.enrich import summarise_chunks
 from src.ingestion.export import export_chunks_to_json
+from src.ingestion.extract import partition_document
+from src.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 @traceable(run_type="chain", name="CreateVectorStore")
@@ -26,20 +37,20 @@ def create_vector_store(
     Returns:
         The created Chroma vector store.
     """
-    print("Creating embeddings and storing in ChromaDB...")
+    logger.info("Creating embeddings and storing in ChromaDB...")
 
     embedding_model = load_embedding_model()
 
-    print("--- Creating vector store ---")
+    logger.info("--- Creating vector store ---")
     vectorstore = Chroma.from_documents(
         documents=documents,
         embedding=embedding_model,
         persist_directory=persist_directory,
         collection_metadata=CHROMA_COLLECTION_METADATA,
     )
-    print("--- Finished creating vector store ---")
+    logger.info("--- Finished creating vector store ---")
 
-    print(f"Vector store saved to {persist_directory}")
+    logger.info("Vector store saved to %s", persist_directory)
     return vectorstore
 
 
@@ -55,14 +66,14 @@ def run_complete_ingestion_pipeline(pdf_path: str) -> Chroma:
     Returns:
         The Chroma vector store ready for retrieval.
     """
-    print("Starting RAG Ingestion Pipeline")
-    print("=" * 50)
+    logger.info("Starting RAG Ingestion Pipeline")
+    logger.info("=" * 50)
 
     elements = partition_document(pdf_path)
     chunks = create_chunks_by_title(elements)
     summarised = summarise_chunks(chunks)
     export_chunks_to_json(summarised, filename="chunks_huggingface.json")
-    db = create_vector_store(summarised, persist_directory="dbv2/chroma_db")
+    db = create_vector_store(summarised, persist_directory=CHROMA_PERSIST_DIR)
 
-    print("Pipeline completed successfully!")
+    logger.info("Pipeline completed successfully!")
     return db

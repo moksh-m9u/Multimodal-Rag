@@ -1,32 +1,54 @@
-"""PDF partitioning and element extraction using unstructured."""
+"""PDF extraction step.
+
+Uses Unstructured's ``partition_pdf`` to turn a PDF file into a list of raw
+content ``Element`` objects, configured to extract embedded images and infer
+table structure for downstream multimodal processing.
+"""
+
+from __future__ import annotations
+
+import logging
+from pathlib import Path
 
 from unstructured.partition.pdf import partition_pdf
 
 from config.settings import (
-    PDF_STRATEGY,
     PDF_EXTRACT_IMAGE_BLOCK_TYPES,
     PDF_INFER_TABLE_STRUCTURE,
+    PDF_STRATEGY,
 )
+from src.logger import get_logger
+
+logger = get_logger(__name__)
 
 
-def partition_document(file_path: str) -> list:
-    """Extract elements from a PDF using unstructured's hi-res strategy.
+def partition_document(file_path: str | Path) -> list:
+    """Extract structured content elements from a PDF.
 
     Args:
-        file_path: Path to the PDF file.
+        file_path: Path to the PDF to process.
 
     Returns:
-        List of extracted unstructured elements.
+        A list of Unstructured ``Element`` objects (headings, narrative text,
+        tables and extracted images).
     """
-    print(f"Partitioning document: {file_path}")
-
-    elements = partition_pdf(
-        filename=file_path,
-        strategy=PDF_STRATEGY,
-        infer_table_structure=PDF_INFER_TABLE_STRUCTURE,
-        extract_image_block_types=PDF_EXTRACT_IMAGE_BLOCK_TYPES,
-        extract_image_block_to_payload=True,
+    pdf_path = Path(file_path)
+    logger.info(
+        "Extracting PDF elements: %s (strategy=%s, extract_images=%s, infer_tables=%s)",
+        pdf_path.name,
+        PDF_STRATEGY,
+        PDF_EXTRACT_IMAGE_BLOCK_TYPES,
+        PDF_INFER_TABLE_STRUCTURE,
     )
 
-    print(f"Extracted {len(elements)} elements")
-    return elements
+    # ``unstructured`` is verbose; keep its log noise out of our logs.
+    logging.getLogger("unstructured").setLevel(logging.WARNING)
+
+    return partition_pdf(
+        filename=str(pdf_path),
+        strategy=PDF_STRATEGY,
+        extract_image_block_types=PDF_EXTRACT_IMAGE_BLOCK_TYPES,
+        infer_table_structure=PDF_INFER_TABLE_STRUCTURE,
+        extract_images_in_pdf=False,
+        chunking_strategy=None,
+    )

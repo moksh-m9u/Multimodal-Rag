@@ -18,7 +18,10 @@ from PIL import Image
 import plotly.express as px
 
 from config.settings import CHROMA_PERSIST_DIR
+from src.documents import extract_original_data
+from src.logger import get_logger
 
+logger = get_logger(__name__)
 
 PAGE_TITLE = "Multimodal RAG Chunk Inspector"
 LAYOUT = "wide"
@@ -719,48 +722,6 @@ def _load_retrieval_pipeline(persist_dir: str):
     return retriever
 
 
-def _extract_retrieval_chunk_data(chunk) -> dict:
-    """Extract parsed original_content from a retrieval Document.
-
-    Handles three schemas:
-    1. Nested:  metadata.original_content = {raw_text, tables_html, images_base64}
-    2. File-based: metadata.image_paths = ['/path/to/img1.jpg', ...]
-    3. Flattened: metadata.raw_text, metadata.tables_html (no images)
-    """
-    from pathlib import Path as _P
-
-    raw = chunk.metadata.get("original_content")
-    if raw is not None:
-        if isinstance(raw, str):
-            return json.loads(raw)
-        return raw
-
-    raw_text = chunk.metadata.get("raw_text", "")
-    tables_raw = chunk.metadata.get("tables_html", "[]")
-    tables_html = json.loads(tables_raw) if isinstance(tables_raw, str) else tables_raw
-
-    images_base64: list[str] = []
-    image_paths_raw = chunk.metadata.get("image_paths", "[]")
-    image_paths = json.loads(image_paths_raw) if isinstance(image_paths_raw, str) else image_paths_raw
-
-    project_root = _P(__file__).resolve().parent.parent
-
-    for p in image_paths:
-        clean = p.lstrip("./")
-        img_path = project_root / clean
-        try:
-            img_bytes = img_path.read_bytes()
-            images_base64.append(base64.b64encode(img_bytes).decode())
-        except Exception as e:
-            print(f"  [WARN] Could not read image: {img_path} ({e})")
-
-    return {
-        "raw_text": raw_text,
-        "tables_html": tables_html,
-        "images_base64": images_base64,
-    }
-
-
 def render_chat_page() -> None:
     st.header("Query & Retrieve")
 
@@ -812,16 +773,7 @@ def render_chat_page() -> None:
         chunks = stream_gen.chunks
         st.session_state.chat_chunks = chunks
 
-        # Debug: print chunk metadata to verify image_paths are present
-        print("\n" + "=" * 60)
-        print(f"RETRIEVED {len(chunks)} CHUNKS")
-        print("=" * 60)
-        for ci, c in enumerate(chunks):
-            print(f"\n--- Chunk {ci + 1} metadata keys: {list(c.metadata.keys())}")
-            for k, v in c.metadata.items():
-                val_str = str(v)[:200]
-                print(f"    {k}: {val_str}")
-        print("=" * 60)
+        logger.info("Retrieved %d chunks for query: %s", len(chunks), query)
 
         status.update(
             label=f"Retrieved {len(chunks)} chunks",
@@ -832,7 +784,7 @@ def render_chat_page() -> None:
         # --- Chunks with full detail, appearing progressively ---
         with st.expander(f"**Referenced Chunks** — {len(chunks)} chunks", expanded=True):
             for i, chunk in enumerate(chunks):
-                data = _extract_retrieval_chunk_data(chunk)
+                data = extract_original_data(chunk)
                 raw_text = data.get("raw_text", "")
                 tables = data.get("tables_html", [])
                 images_b64 = data.get("images_base64", [])
@@ -919,7 +871,7 @@ def render_chat_page() -> None:
     # Referenced chunks
     with st.expander(f"**Referenced Chunks** — {len(chunks)} chunks", expanded=True):
         for i, chunk in enumerate(chunks):
-            data = _extract_retrieval_chunk_data(chunk)
+            data = extract_original_data(chunk)
             raw_text = data.get("raw_text", "")
             tables = data.get("tables_html", [])
             images_b64 = data.get("images_base64", [])

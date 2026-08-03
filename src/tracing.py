@@ -1,40 +1,36 @@
-"""LangSmith tracing helpers for multimodal observability."""
+"""LangSmith trace metadata helpers.
+
+Converts retrieved chunks into small, JSON-serialisable dictionaries so that
+trace ``input``/``output`` metadata stays readable in the LangSmith UI instead
+of dumping raw page content and base64 blobs.
+"""
+
+from __future__ import annotations
 
 import json
 from typing import Any
 
 from langchain_core.documents import Document
 
+from src.documents import extract_original_data
+
 
 def _extract_chunk_summary(chunk: Document) -> dict[str, Any]:
-    """Build a summary of a chunk's multimodal content for trace metadata."""
+    """Build a compact summary of one chunk's multimodal content.
+
+    The returned dict describes the chunk (lengths and presence of text,
+    tables, images) rather than its full payload, which keeps trace metadata
+    small and useful for debugging retrieval quality.
+    """
     enhanced = chunk.page_content or ""
-    meta = chunk.metadata or {}
-
-    raw = meta.get("original_content")
-    if isinstance(raw, str):
-        try:
-            raw = json.loads(raw) or {}
-        except json.JSONDecodeError:
-            raw = {}
-    if not isinstance(raw, dict):
-        raw = {}
-
-    tables = raw.get("tables_html", [])
-    images = raw.get("images_base64", [])
-    raw_text = raw.get("raw_text", "")
-
-    if not raw:
-        tables_raw = meta.get("tables_html", "[]")
-        tables = json.loads(tables_raw) if isinstance(tables_raw, str) else (tables_raw or [])
-        image_paths_raw = meta.get("image_paths", "[]")
-        images = json.loads(image_paths_raw) if isinstance(image_paths_raw, str) else (image_paths_raw or [])
-        raw_text = meta.get("raw_text", "")
+    original = extract_original_data(chunk)
+    tables = original["tables_html"]
+    images = original["images_base64"]
 
     return {
         "enhanced_length": len(enhanced),
         "enhanced_preview": enhanced[:300],
-        "raw_text_length": len(raw_text),
+        "raw_text_length": len(original["raw_text"]),
         "table_count": len(tables),
         "image_count": len(images),
         "has_table": len(tables) > 0,
@@ -43,10 +39,13 @@ def _extract_chunk_summary(chunk: Document) -> dict[str, Any]:
 
 
 def summarize_chunks(chunks: list[Document], max_preview: int = 5) -> list[dict]:
-    """Summarize retrieved chunks for trace logging."""
-    out = []
-    for i, c in enumerate(chunks):
-        if i >= max_preview:
-            break
-        out.append(_extract_chunk_summary(c))
-    return out
+    """Summarise up to ``max_preview`` chunks for inclusion in trace metadata.
+
+    Args:
+        chunks: Retrieved documents to describe.
+        max_preview: Upper bound on the number of chunks summarised.
+
+    Returns:
+        List of compact chunk summaries (see :func:`_extract_chunk_summary`).
+    """
+    return [_extract_chunk_summary(c) for c in chunks[:max_preview]]

@@ -1,26 +1,47 @@
-"""Content-type separation and AI-enhanced summary generation."""
+"""Content-type separation and AI-enhanced summary generation.
+
+The second half of ingestion: each unstructured chunk is analysed for its
+content types (text, tables, images), and a multimodal vision model generates
+a searchable summary that captures both the textual data and the visual
+content.  The result is wrapped into a LangChain ``Document`` whose
+``metadata["original_content"]`` stores the raw payload for later retrieval
+and UI rendering.
+"""
+
+from __future__ import annotations
 
 import json
 from typing import Any
 
-from openai import OpenAI
 from langchain_core.documents import Document
 from langsmith import traceable
 from langsmith.wrappers import wrap_openai
+from openai import OpenAI
 
 from config.settings import (
-    HF_TOKEN,
-    ENHANCEMENT_MODEL,
     ENHANCEMENT_BASE_URL,
-    ENHANCEMENT_TEMPERATURE,
     ENHANCEMENT_MAX_TOKENS,
+    ENHANCEMENT_MODEL,
+    ENHANCEMENT_TEMPERATURE,
+    HF_TOKEN,
 )
+from src.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 def separate_content_types(chunk: Any) -> dict:
-    """Analyze what types of content are in a chunk.
+    """Analyse which content types are present in a chunk.
 
-    Returns a dict with keys: text, tables, images, types.
+    Inspects the ``orig_elements`` attached by Unstructured to split a chunk
+    into its textual content, HTML tables and base64-encoded images.
+
+    Args:
+        chunk: An Unstructured chunk with a ``text`` and ``metadata``.
+
+    Returns:
+        Dict with keys ``text`` (str), ``tables`` (list[str]),
+        ``images`` (list[str]) and ``types`` (set of type names).
     """
     content_data: dict = {
         "text": chunk.text,
@@ -38,9 +59,7 @@ def separate_content_types(chunk: Any) -> dict:
 
         if element_type == "Table":
             content_data["types"].append("table")
-            table_html = getattr(
-                element.metadata, "text_as_html", element.text
-            )
+            table_html = getattr(element.metadata, "text_as_html", element.text)
             content_data["tables"].append(table_html)
 
         elif element_type == "Image":
@@ -54,11 +73,12 @@ def separate_content_types(chunk: Any) -> dict:
 
 
 def _create_enhancement_client() -> OpenAI:
-    """Create a wrapped OpenAI client for multimodal enhancement tracing."""
-    raw = OpenAI(
-        api_key=HF_TOKEN,
-        base_url=ENHANCEMENT_BASE_URL,
-    )
+    """Create an OpenAI-compatible client for the enhancement model.
+
+    The raw client is wrapped with ``wrap_openai`` so that LangSmith renders
+    the base64 images inside the multimodal trace.
+    """
+    raw = OpenAI(api_key=HF_TOKEN, base_url=ENHANCEMENT_BASE_URL)
     return wrap_openai(raw, chat_name="EnhancementVisionLLM")
 
 
@@ -92,21 +112,17 @@ def _build_enhancement_prompt(text: str, tables: list[str]) -> str:
 
 
 @traceable(run_type="llm", name="AIEnhancedSummary")
-def create_ai_enhanced_summary(
-    text: str, tables: list[str], images: list[str]
-) -> str:
+def create_ai_enhanced_summary(text: str, tables: list[str], images: list[str]) -> str:
     """Create an AI-enhanced searchable summary for mixed content.
 
-    Uses the raw OpenAI client wrapped with wrap_openai so that
-    LangSmith renders the base64 images inside the multimodal trace.
-
     Args:
-        text: Raw OCR text.
+        text: Raw OCR text of the chunk.
         tables: List of HTML table strings.
         images: List of base64-encoded image strings.
 
     Returns:
-        The enhanced summary text, or a fallback summary on failure.
+        The enhanced summary text, or a fallback summary on failure so the
+        pipeline can continue without the enrichment model.
     """
     try:
         client = _create_enhancement_client()
@@ -130,7 +146,7 @@ def create_ai_enhanced_summary(
         return response.choices[0].message.content
 
     except Exception as e:
-        print(f"    AI summary failed: {e}")
+        logger.warning("AI summary failed for chunk: %s", e)
         fallback = f"{text[:300]}..."
         if tables:
             fallback += f" [Contains {len(tables)} table(s)]"
@@ -143,40 +159,41 @@ def create_ai_enhanced_summary(
 def summarise_chunks(chunks: list) -> list[Document]:
     """Process all chunks with AI summaries and wrap them as LangChain Documents.
 
-    Each Document stores the enhanced content as page_content and the full
-    original data (raw text, tables, images) as JSON in metadata.
+    Each Document stores the enhanced content as ``page_content`` and the full
+    original data (raw text, tables, images) as JSON in ``metadata``.
 
     Args:
         chunks: List of unstructured chunks.
 
     Returns:
-        List of langchain Documents ready for vector storage.
+        List of LangChain ``Document`` objects ready for vector storage.
     """
-    print("Processing chunks with AI summaries...")
+    logger.info("Processing chunks with AI summaries...")
     langchain_documents: list[Document] = []
 
     for i, chunk in enumerate(chunks):
         current = i + 1
         total = len(chunks)
-        print(f"  Processing chunk {current}/{total}")
+        logger.info("  Processing chunk %d/%d", current, total)
 
         content_data = separate_content_types(chunk)
-        print(
-            f"    Types: {content_data['types']}  |  "
-            f"Tables: {len(content_data['tables'])}  |  "
-            f"Images: {len(content_data['images'])}"
+        logger.debug(
+            "    Types: %s  |  Tables: %d  |  Images: %d",
+            content_data["types"],
+            len(content_data["tables"]),
+            len(content_data["images"]),
         )
 
         if content_data["tables"] or content_data["images"]:
-            print("    -> Creating AI summary for mixed content...")
+            logger.debug("    -> Creating AI summary for mixed content...")
             enhanced = create_ai_enhanced_summary(
                 content_data["text"],
                 content_data["tables"],
                 content_data["images"],
             )
-            print(f"    -> Enhanced: {enhanced[:150]}...")
+            logger.debug("    -> Enhanced: %s...", enhanced[:150])
         else:
-            print("    -> Using raw text (no tables/images)")
+            logger.debug("    -> Using raw text (no tables/images)")
             enhanced = content_data["text"]
 
         doc = Document(
@@ -193,5 +210,5 @@ def summarise_chunks(chunks: list) -> list[Document]:
         )
         langchain_documents.append(doc)
 
-    print(f"Processed {len(langchain_documents)} chunks")
+    logger.info("Processed %d chunks", len(langchain_documents))
     return langchain_documents

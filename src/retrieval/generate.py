@@ -1,63 +1,38 @@
-"""Answer generation using a multimodal LLM."""
+"""Answer generation using a multimodal LLM.
 
-import base64 as _b64
-import json
+Builds the prompt from retrieved chunks (enhanced summaries + HTML tables +
+base64 images), calls Gemini to generate an answer, and wraps both retrieval
+and generation under a single LangSmith trace so the whole query shows up as
+one run in the UI.
+"""
 
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_core.messages import HumanMessage
+from __future__ import annotations
+
+import base64
+
 from langchain_core.documents import Document
+from langchain_core.messages import HumanMessage
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langsmith import traceable
 from langsmith.run_helpers import set_tracing_parent
 
 from config.settings import GENERATION_MODEL, GENERATION_TEMPERATURE
+from src.documents import extract_original_data
+from src.logger import get_logger
 from src.retrieval.search import retrieve_chunks
 from src.tracing import summarize_chunks
 
-
-def _extract_original_data(chunk: Document) -> dict:
-    """Extract and parse original_content metadata from a chunk.
-
-    Handles both nested and flattened ChromaDB metadata schemas.
-    """
-    raw = chunk.metadata.get("original_content")
-    if raw is not None:
-        if isinstance(raw, str):
-            return json.loads(raw)
-        return raw
-
-    raw_text = chunk.metadata.get("raw_text", "")
-    tables_raw = chunk.metadata.get("tables_html", "[]")
-    tables_html = json.loads(tables_raw) if isinstance(tables_raw, str) else tables_raw
-
-    images_base64: list[str] = []
-    image_paths_raw = chunk.metadata.get("image_paths", "[]")
-    image_paths = json.loads(image_paths_raw) if isinstance(image_paths_raw, str) else image_paths_raw
-
-    from pathlib import Path as _P
-    import base64 as _b64
-
-    project_root = _P(__file__).resolve().parent.parent.parent
-    for p in image_paths:
-        clean = p.lstrip("./")
-        img_path = project_root / clean
-        try:
-            img_bytes = img_path.read_bytes()
-            images_base64.append(_b64.b64encode(img_bytes).decode())
-        except Exception as e:
-            print(f"  [WARN] Could not read image for generation: {img_path} ({e})")
-
-    return {
-        "raw_text": raw_text,
-        "tables_html": tables_html,
-        "images_base64": images_base64,
-    }
+logger = get_logger(__name__)
 
 
 def _build_text_prompt(chunks: list[Document], query: str) -> str:
     """Build the text portion of the prompt from retrieved chunks.
 
     Sends enhanced summaries as primary context, with HTML tables appended.
-    Images are sent separately via _collect_images.
+    Images are sent separately via :func:`_collect_images`.
+
+    Note: only the first 5 chunks are included to keep the prompt size
+    predictable for the model.
     """
     parts = [
         "You are given retrieved chunks from a technical document.\n"
@@ -74,16 +49,13 @@ def _build_text_prompt(chunks: list[Document], query: str) -> str:
         "",
     ]
 
-    # DIAGNOSTIC: only top 1 chunk, no images — test if Gemini receives text
     for i, chunk in enumerate(chunks[:5]):
         enhanced = chunk.page_content
         if enhanced:
             parts.append(f"--- Chunk {i + 1} ---")
             parts.append(f"SUMMARY:\n{enhanced.strip()}\n")
 
-        original_data = _extract_original_data(chunk)
-
-        tables_html = original_data.get("tables_html", [])
+        tables_html = extract_original_data(chunk)["tables_html"]
         if tables_html:
             parts.append("TABLES:")
             for j, table in enumerate(tables_html):
@@ -103,8 +75,7 @@ def _collect_images(chunks: list[Document]) -> list[dict]:
     """Collect all base64 images from chunks into message content blocks."""
     image_blocks: list[dict] = []
     for chunk in chunks:
-        original_data = _extract_original_data(chunk)
-        for b64 in original_data.get("images_base64", []):
+        for b64 in extract_original_data(chunk)["images_base64"]:
             image_blocks.append(
                 {
                     "type": "image_url",
@@ -115,19 +86,32 @@ def _collect_images(chunks: list[Document]) -> list[dict]:
 
 
 def _build_message_content(chunks: list[Document], query: str) -> list[dict]:
-    """Build the full multimodal message content list."""
-    text_prompt = _build_text_prompt(chunks, query)
-    content: list[dict] = [{"type": "text", "text": text_prompt}]
+    """Build the full multimodal message content list (text + images)."""
+    content: list[dict] = [{"type": "text", "text": _build_text_prompt(chunks, query)}]
     content.extend(_collect_images(chunks))
     return content
 
 
-def _create_llm():
-    """Create the Gemini LLM instance."""
-    print(f"\n  Using model: {GENERATION_MODEL}")
+def _create_llm() -> ChatGoogleGenerativeAI:
+    """Create the Gemini LLM instance used for generation."""
+    logger.info("  Using model: %s", GENERATION_MODEL)
     return ChatGoogleGenerativeAI(
         model=GENERATION_MODEL,
         temperature=GENERATION_TEMPERATURE,
+    )
+
+
+def _save_prompt_debug(message_content: list[dict]) -> None:
+    """Dump the full text prompt to ``last_prompt.txt`` for inspection."""
+    from pathlib import Path
+
+    text_content = next(x["text"] for x in message_content if x["type"] == "text")
+    image_count = sum(1 for x in message_content if x["type"] == "image_url")
+    Path("last_prompt.txt").write_text(text_content, encoding="utf-8")
+    logger.info(
+        "Prompt saved to last_prompt.txt (%d chars, %d images)",
+        len(text_content),
+        image_count,
     )
 
 
@@ -140,7 +124,7 @@ def generate_answer(
     Args:
         chunks: Retrieved document chunks.
         query: The original user query.
-        verbose: If True, prints debug info.
+        verbose: If True, logs additional debug detail.
 
     Returns:
         The generated answer string.
@@ -157,65 +141,91 @@ def generate_answer(
         message = HumanMessage(content=message_content)
         response = llm.invoke([message])
 
-        print(
-            f"\n  LangSmith trace: {len(chunks)} chunks, "
-            f"{total_images} images, {total_tables} tables"
+        logger.info(
+            "LangSmith trace: %d chunks, %d images, %d tables",
+            len(chunks),
+            total_images,
+            total_tables,
         )
         return response.content
 
     except Exception as e:
         error_msg = f"Answer generation failed: {e}"
         if verbose:
-            print(error_msg)
+            logger.exception(error_msg)
+        else:
+            logger.warning(error_msg)
         return f"Sorry, could not complete response due to: {e}"
 
 
-def _save_prompt_debug(message_content: list[dict]) -> None:
-    """Dump the full prompt to last_prompt.txt for inspection."""
-    from pathlib import Path as _P
-    text_content = next(x["text"] for x in message_content if x["type"] == "text")
-    image_count = sum(1 for x in message_content if x["type"] == "image_url")
-    _P("last_prompt.txt").write_text(text_content, encoding="utf-8")
-    print(f"\n  Prompt saved to last_prompt.txt ({len(text_content)} chars, {image_count} images)\n")
-
-
 def _collect_image_attachments(chunks: list[Document]) -> dict:
-    """Gather images from chunks for LangSmith trace attachments.
+    """Gather images from chunks as binary attachments for LangSmith traces.
 
-    Handles both file-path and base64 storage schemas via
-    ``_extract_original_data`` (which resolves file paths to base64).
+    Uses :func:`extract_original_data` to resolve either storage schema
+    (file-path or inline base64) to image bytes.
     """
-    attachments = {}
+    attachments: dict = {}
     img_idx = 0
     for chunk in chunks:
-        od = _extract_original_data(chunk)
-        for b64_str in od.get("images_base64", []):
+        for b64_str in extract_original_data(chunk)["images_base64"]:
             try:
-                attachments[f"chunk_img_{img_idx}"] = (
-                    "image/jpeg",
-                    _b64.b64decode(b64_str),
-                )
+                attachments[f"chunk_img_{img_idx}"] = ("image/jpeg", base64.b64decode(b64_str))
                 img_idx += 1
             except Exception:
-                pass
-
+                logger.warning("Could not decode image attachment for trace")
     return attachments
+
+
+def _attach_images_to_trace(run_tree, chunks: list[Document]) -> None:
+    """Attach retrieved chunk images to ``run_tree`` if any are available."""
+    if run_tree is None:
+        return
+    attachments = _collect_image_attachments(chunks)
+    if attachments:
+        run_tree.attachments = attachments
+
+
+class _StreamWrapper:
+    """Iterator adapter that keeps the LangSmith parent context alive.
+
+    ``generate_answer_stream`` is a generator, so LangSmith defers creating
+    its trace run until the first ``next()`` call.  By the time that happens
+    the original parent context (inside ``answer_query_stream``) is gone, so
+    we re-activate it around every ``next()`` to keep retrieval + generation
+    nested under the same ``AnswerQuery`` root run.
+    """
+
+    def __init__(self, gen, chunks: list[Document], parent=None):
+        self._gen = gen
+        self.chunks = chunks
+        self._parent = parent
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        if self._parent is not None:
+            with set_tracing_parent(self._parent):
+                return next(self._gen)
+        return next(self._gen)
 
 
 @traceable(run_type="chain", name="AnswerQuery", dangerously_allow_filesystem=True)
 def answer_query(retriever, query: str, run_tree=None) -> str:
     """Retrieve chunks then generate an answer under a single LangSmith trace.
 
-    Images from retrieved chunks are attached to the trace so they render
-    in the LangSmith UI.  ``run_tree`` is injected by LangSmith.
+    Images from retrieved chunks are attached to the trace so they render in
+    the LangSmith UI.  ``run_tree`` is injected by LangSmith.
+
+    Args:
+        retriever: Vector store retriever.
+        query: The user's question.
+
+    Returns:
+        The generated answer string.
     """
     chunks = retrieve_chunks(retriever, query)
-
-    if run_tree is not None:
-        attachments = _collect_image_attachments(chunks)
-        if attachments:
-            run_tree.attachments = attachments
-
+    _attach_images_to_trace(run_tree, chunks)
     return generate_answer(chunks, query)
 
 
@@ -223,29 +233,19 @@ def answer_query(retriever, query: str, run_tree=None) -> str:
 def answer_query_stream(retriever, query: str, run_tree=None):
     """Retrieve chunks then stream an answer under a single LangSmith trace.
 
-    Yields answer tokens.  Chunks are available via the returned generator's
-    ``chunks`` attribute after retrieval completes.  ``run_tree`` is injected
-    by LangSmith.
+    Yields answer tokens as they are produced.  The retrieved chunks are
+    available via the returned generator's ``chunks`` attribute once
+    retrieval completes.  ``run_tree`` is injected by LangSmith.
+
+    Args:
+        retriever: Vector store retriever.
+        query: The user's question.
+
+    Yields:
+        Answer token strings.
     """
     chunks = retrieve_chunks(retriever, query)
-
-    if run_tree is not None:
-        attachments = _collect_image_attachments(chunks)
-        if attachments:
-            run_tree.attachments = attachments
-
-    class _StreamWrapper:
-        def __init__(self, gen, chunks, parent=None):
-            self._gen = gen
-            self.chunks = chunks
-            self._parent = parent
-        def __iter__(self):
-            return self
-        def __next__(self):
-            if self._parent is not None:
-                with set_tracing_parent(self._parent):
-                    return next(self._gen)
-            return next(self._gen)
+    _attach_images_to_trace(run_tree, chunks)
 
     return _StreamWrapper(
         generate_answer_stream(chunks, query),
@@ -261,6 +261,14 @@ def generate_answer_stream(
     """Generate a streaming answer using the multimodal LLM.
 
     Yields answer tokens as they are generated by the LLM.
+
+    Args:
+        chunks: Retrieved document chunks.
+        query: The original user query.
+        verbose: If True, logs additional debug detail.
+
+    Yields:
+        Answer token strings.
     """
     try:
         chunk_summaries = summarize_chunks(chunks)
@@ -269,20 +277,25 @@ def generate_answer_stream(
 
         llm = _create_llm()
 
-        print(f"\n  {len(chunks)} chunks received by generation")
+        logger.info("  %d chunks received by generation", len(chunks))
         for ci, c in enumerate(chunks[:5]):
-            pc = c.page_content or ""
-            od = _extract_original_data(c)
-            print(f"    Chunk {ci+1}: summary={len(pc)} chars, "
-                  f"tables={len(od.get('tables_html',[]))}, "
-                  f"images={len(od.get('images_base64',[]))}")
+            od = extract_original_data(c)
+            logger.debug(
+                "    Chunk %d: summary=%d chars, tables=%d, images=%d",
+                ci + 1,
+                len(c.page_content or ""),
+                len(od["tables_html"]),
+                len(od["images_base64"]),
+            )
 
         message_content = _build_message_content(chunks, query)
         _save_prompt_debug(message_content)
 
-        print(
-            f"\n  LangSmith trace: {len(chunks)} chunks, "
-            f"{total_images} images, {total_tables} tables"
+        logger.info(
+            "LangSmith trace: %d chunks, %d images, %d tables",
+            len(chunks),
+            total_images,
+            total_tables,
         )
 
         message = HumanMessage(content=message_content)
@@ -291,6 +304,5 @@ def generate_answer_stream(
                 yield chunk.content
 
     except Exception as e:
-        error_msg = f"Answer generation failed: {e}"
-        print(error_msg)
+        logger.warning("Answer generation failed: %s", e)
         yield f"Sorry, could not complete response due to: {e}"
