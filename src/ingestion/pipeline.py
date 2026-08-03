@@ -2,6 +2,7 @@
 
 from langchain_chroma import Chroma
 from langchain_core.documents import Document
+from langsmith import traceable
 
 from config.settings import CHROMA_PERSIST_DIR, CHROMA_COLLECTION_METADATA
 from src.embed import load_embedding_model
@@ -11,6 +12,7 @@ from src.ingestion.enrich import summarise_chunks
 from src.ingestion.export import export_chunks_to_json
 
 
+@traceable(run_type="chain", name="CreateVectorStore")
 def create_vector_store(
     documents: list[Document],
     persist_directory: str = CHROMA_PERSIST_DIR,
@@ -41,6 +43,7 @@ def create_vector_store(
     return vectorstore
 
 
+@traceable(run_type="chain", name="FullIngestionPipeline")
 def run_complete_ingestion_pipeline(pdf_path: str) -> Chroma:
     """Run the full RAG ingestion pipeline end-to-end.
 

@@ -13,8 +13,8 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.embed import load_embedding_model
-from src.retrieval.search import load_vector_store, build_retriever, retrieve_chunks
-from src.retrieval.generate import generate_answer
+from src.retrieval.search import load_vector_store, build_retriever
+from src.retrieval.generate import answer_query
 
 
 def main() -> None:
@@ -32,26 +32,8 @@ def main() -> None:
         print("No query provided.")
         return
 
-    print("Running retrieval...")
-    chunks = retrieve_chunks(retriever, query)
-    print(f"Retrieved {len(chunks)} chunks")
-
-    for i, chunk in enumerate(chunks):
-        print("\n" + "=" * 80)
-        print(f"CHUNK {i + 1}")
-        print("=" * 80)
-
-        original_data = chunk.metadata.get("original_content")
-        if original_data:
-            import json
-            if isinstance(original_data, str):
-                original_data = json.loads(original_data)
-            print(original_data.get("raw_text", "")[:1000])
-
+    final_answer = answer_query(retriever, query)
     print("\n" + "-" * 5)
-    print("Generating answer...")
-    final_answer = generate_answer(chunks, query, verbose=True)
-    print("-" * 5)
     print(final_answer)
 
 

@@ -804,12 +804,12 @@ def render_chat_page() -> None:
     if submitted and query.strip():
         st.session_state.chat_query = query
 
-        from src.retrieval.search import retrieve_chunks
-        from src.retrieval.generate import generate_answer_stream
+        from src.retrieval.generate import answer_query_stream
 
-        # --- Progressive chunk retrieval ---
+        # --- Single trace: retrieve + stream answer ---
         status = st.status("Retrieving relevant chunks ...", expanded=True)
-        chunks = retrieve_chunks(retriever, query)
+        stream_gen = answer_query_stream(retriever, query)
+        chunks = stream_gen.chunks
         st.session_state.chat_chunks = chunks
 
         # Debug: print chunk metadata to verify image_paths are present
@@ -895,7 +895,7 @@ def render_chat_page() -> None:
         # --- Streaming answer ---
         answer_placeholder = st.empty()
         collected = ""
-        for token in generate_answer_stream(chunks, query, verbose=False):
+        for token in stream_gen:
             collected += token
             answer_placeholder.markdown(f"### Answer\n\n{collected}▌")
         answer_placeholder.markdown(f"### Answer\n\n{collected}")

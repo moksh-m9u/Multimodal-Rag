@@ -9,6 +9,7 @@ description = "Multimodal RAG pipeline — PDF ingestion, vector search, and ans
 requires-python = ">=3.13"
 dependencies = [
     "langchain",
+    "langsmith",
     "langchain-chroma",
     "langchain-community",
     "langchain-google-genai",

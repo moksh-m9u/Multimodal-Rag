@@ -3,6 +3,7 @@
 from langchain_chroma import Chroma
 from langchain_huggingface import HuggingFaceEndpointEmbeddings
 from langchain_core.documents import Document
+from langsmith import traceable
 
 from config.settings import (
     CHROMA_PERSIST_DIR,
@@ -10,6 +11,7 @@ from config.settings import (
     RETRIEVAL_FETCH_K,
     RETRIEVAL_SEARCH_TYPE,
 )
+from src.tracing import summarize_chunks
 
 
 def load_vector_store(
@@ -33,6 +35,15 @@ def build_retriever(db: Chroma):
     )
 
 
+@traceable(run_type="retriever", name="RetrieveChunks")
 def retrieve_chunks(retriever, query: str) -> list[Document]:
     """Run retrieval and return matching chunks."""
-    return retriever.invoke(query)
+    chunks = retriever.invoke(query)
+    chunk_summaries = summarize_chunks(chunks)
+    total_images = sum(c.get("image_count", 0) for c in chunk_summaries)
+    total_tables = sum(c.get("table_count", 0) for c in chunk_summaries)
+    print(
+        f"  Retrieved {len(chunks)} chunks "
+        f"({total_images} images, {total_tables} tables)"
+    )
+    return chunks

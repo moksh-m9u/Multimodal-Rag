@@ -3,9 +3,10 @@
 import json
 from typing import Any
 
-from langchain_openai import ChatOpenAI
-from langchain_core.messages import HumanMessage
+from openai import OpenAI
 from langchain_core.documents import Document
+from langsmith import traceable
+from langsmith.wrappers import wrap_openai
 
 from config.settings import (
     HF_TOKEN,
@@ -52,15 +53,13 @@ def separate_content_types(chunk: Any) -> dict:
     return content_data
 
 
-def _create_enhancement_llm() -> ChatOpenAI:
-    """Create the LLM used for content enhancement."""
-    return ChatOpenAI(
-        model=ENHANCEMENT_MODEL,
-        base_url=ENHANCEMENT_BASE_URL,
+def _create_enhancement_client() -> OpenAI:
+    """Create a wrapped OpenAI client for multimodal enhancement tracing."""
+    raw = OpenAI(
         api_key=HF_TOKEN,
-        temperature=ENHANCEMENT_TEMPERATURE,
-        max_tokens=ENHANCEMENT_MAX_TOKENS,
+        base_url=ENHANCEMENT_BASE_URL,
     )
+    return wrap_openai(raw, chat_name="EnhancementVisionLLM")
 
 
 def _build_enhancement_prompt(text: str, tables: list[str]) -> str:
@@ -92,10 +91,14 @@ def _build_enhancement_prompt(text: str, tables: list[str]) -> str:
     return prompt
 
 
+@traceable(run_type="llm", name="AIEnhancedSummary")
 def create_ai_enhanced_summary(
     text: str, tables: list[str], images: list[str]
 ) -> str:
     """Create an AI-enhanced searchable summary for mixed content.
+
+    Uses the raw OpenAI client wrapped with wrap_openai so that
+    LangSmith renders the base64 images inside the multimodal trace.
 
     Args:
         text: Raw OCR text.
@@ -106,21 +109,25 @@ def create_ai_enhanced_summary(
         The enhanced summary text, or a fallback summary on failure.
     """
     try:
-        llm = _create_enhancement_llm()
+        client = _create_enhancement_client()
         prompt_text = _build_enhancement_prompt(text, tables)
 
-        message_content: list[dict] = [{"type": "text", "text": prompt_text}]
+        content: list[dict] = [{"type": "text", "text": prompt_text}]
         for b64 in images:
-            message_content.append(
+            content.append(
                 {
                     "type": "image_url",
                     "image_url": {"url": f"data:image/jpeg;base64,{b64}"},
                 }
             )
 
-        message = HumanMessage(content=message_content)
-        response = llm.invoke([message])
-        return response.content
+        response = client.chat.completions.create(
+            model=ENHANCEMENT_MODEL,
+            messages=[{"role": "user", "content": content}],
+            temperature=ENHANCEMENT_TEMPERATURE,
+            max_tokens=ENHANCEMENT_MAX_TOKENS,
+        )
+        return response.choices[0].message.content
 
     except Exception as e:
         print(f"    AI summary failed: {e}")
@@ -132,6 +139,7 @@ def create_ai_enhanced_summary(
         return fallback
 
 
+@traceable(run_type="chain", name="SummariseChunks")
 def summarise_chunks(chunks: list) -> list[Document]:
     """Process all chunks with AI summaries and wrap them as LangChain Documents.
 
