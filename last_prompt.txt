@@ -9,115 +9,85 @@ Do NOT claim information is absent unless you have examined ALL provided chunks.
 If a chunk explicitly contains the answer, answer directly using that chunk.
 Use both the text summaries and the attached images when answering.
 
-QUESTION: pinout strcuture and configuration of LM2596
+QUESTION: Show me the electrical specifications table for the inductor
 
 RETRIEVED CONTEXT:
 
 --- Chunk 1 ---
 SUMMARY:
-### Comprehensive Searchable Description for LM2596 Datasheet Content  
+LM2596
 
-#### **1. Key Facts, Numbers, and Data Points**  
-- **Part Number & Version**:  
-  - LM2596 (fixed output voltage version: 5.0V)  
-  - Document ID: `LM2596 SNVS124G`  
-  - Revision History: Original November 1999, revised March 2023  
-  - Copyright: © 2016, Texas Instruments Incorporated  
-- **Package Specifications**:  
-  | Package Type | Package Code | Body Size (Nominal) |  
-  |--------------|--------------|---------------------|  
-  | TO-220, 5-pin | NDH | 14.986 mm × 10.16 mm |  
-  | TO-263, 5-pin | KTT | 10.10 mm × 8.89 mm |  
-  - *Note: All packages are listed in the orderable addendum (end of datasheet)*.  
-- **Typical Application Circuit Values**:  
-  - Unregulated DC Input: **12V**  
-  - Output Voltage: **5.0V** (regulated)  
-  - Load Current: **3A**  
-  - Input Capacitor (`C_IN`): **680 μF**  
-  - Output Capacitor (`C_OUT`): **220 μF**  
-  - Inductor (`L1`): **33 μH**  
-  - Diode (`D1`): **1N5824**  
-  - IC Pins:  
-    - Pin 1: `+V_IN` (12V input)  
-    - Pin 2: Feedback (connected to output node)  
-    - Pin 3: GND  
-    - Pin 4: Output (to inductor)  
-    - Pin 5: `ON/OFF` (tied to ground for operation)  
-- **Critical Notes**:  
-  - "IMPORTANT NOTICE" section covers availability, warranty, safety-critical applications, and intellectual property.  
-  - Production Data status (not preliminary).  
+Table 9-1. Inductor Manufacturers Part Numbers (continued)
 
-#### **2. Main Topics and Concepts Discussed**  
-- **Voltage Regulation**:  
-  - Buck converter topology for step-down DC-DC conversion (12V unregulated → 5.0V regulated output).  
-  - Fixed 5.0V output version of the LM2596 (no external voltage-setting resistors required).  
-- **Component Functionality**:  
-  - Role of input/output capacitors (`C_IN`, `C_OUT`) for ripple reduction.  
-  - Inductor (`L1`) energy storage and diode (`D1`) freewheeling path.  
-  - `ON/OFF` pin control (active-low enable, tied to ground in this circuit).  
-- **Applications**:  
-  - **Appliances**, **Grid infrastructure**, **Home theater systems** (EPOS referenced as a use case).  
-- **Package Variants**:  
-  - Comparison of TO-220 (NDH) vs. TO-263 (KTT) for thermal/mechanical design.  
-- **Compliance & Legal**:  
-  - Safety disclaimers, intellectual property, and production status.  
-
-#### **3. Questions This Content Could Answer**  
-- **Design & Schematic Queries**:  
-  - "What is the recommended inductor value for LM2596 5V output?" → **33 μH**  
-  - "How to connect the ON/OFF pin in a typical circuit?" → **Tie to ground** (for active operation).  
-  - "What capacitors are used in the LM2596 5V reference design?" → **680 μF (input), 220 μF (output)**.  
-- **Package & Dimensions**:  
-  - "What is the body size of TO-263 (KTT) for LM2596?" → **10.10 mm × 8.89 mm**.  
-  - "Which package is larger: TO-220 or TO-263?" → **TO-220 (14.986 mm × 10.16 mm)**.  
-- **Application-Specific**:  
-  - "Where is LM2596 used in home theater?" → **Power supply for regulated 5V output**.  
-  - "Is LM2596 suitable for grid infrastructure?" → **Yes (explicitly listed as an application)**.  
-- **Component Sourcing**:  
-  - "What diode is specified for LM2596?" → **1N5824**.  
-
-#### **4. Visual Content Analysis (Circuit Diagram)**  
-- **Diagram Type**: Simplified schematic of a **buck converter circuit** for LM2596-5.0.  
-- **Key Components & Layout**:  
-  - **IC Center**: LM2596 (labeled "5.0" for fixed 5V output) with 5 pins clearly numbered.  
-  - **Input Stage**: 12V unregulated DC → `C_IN` (680 μF) → Pin 1 (`+V_IN`).  
-  - **Output Stage**: Pin 4 (Output) → `L1` (33 μH inductor) → `D1` (1N5824 diode, anode to ground) → `C_OUT` (220 μF) → 5.0V/3A load.  
-  - **Feedback Loop**: Direct connection from output node to Pin 2 (Feedback), enabling internal voltage regulation.  
-  - **Control Pin**: Pin 5 (`ON/OFF`) grounded (simplified operation; active-low enable).  
-- **Critical Patterns**:  
-  - **Energy Path**: Input → Inductor → Output (with diode providing freewheeling path during switch-off).  
-  - **Grounding**: All capacitors/diode connected to common ground; IC Pin 3 (GND) as reference.  
-  - **No External Resistors**: Fixed-output version eliminates external voltage-setting resistors (unlike adjustable versions).  
-- **Common Misinterpretations**:  
-  - Pin numbering: Pin 4 = Output (not Pin 2), Pin 5 = `ON/OFF` (not GND).  
-  - Diode orientation: Cathode to output node, anode to ground (reverse-biased during normal operation).  
-
-#### **5. Alternative Search Terms for Findability**  
-- **Component-Specific**:  
-  `LM2596-5.0 circuit`, `TO-220 package dimensions`, `1N5824 diode application`, `33μH inductor buck converter`, `680μF input capacitor`.  
-- **Application-Focused**:  
-  `5V 3A regulator for home theater`, `grid infrastructure power supply`, `appliance DC-DC converter`, `12V to 5V step-down circuit`.  
-- **Document & Version**:  
-  `SNVS124G datasheet`, `LM2596 March 2023 revision`, `Texas Instruments LM2596 fixed output`.  
-- **Problem-Solving Phrases**:  
-  "Why is ON/OFF pin grounded in LM2596?", "LM2596 output capacitor value", "TO-263 KTT footprint", "buck converter 3A load design".  
-- **Error-Prone Variations**:  
-  `LM2596 5.0y` (mislabeled in text), `Coy 3A Load` (text error for "3A Load"), `220 pF` (should be 220 μF; text typo).  
-
----  
-**Why This Description Is Search-Optimized**:  
-- **Repeats critical numbers** (e.g., `5.0V`, `33 μH`, `10.10 mm`) in natural language for keyword density.  
-- **Includes common typos** (e.g., `5.0y`, `Coy`) to capture user errors.  
-- **Structures data for scannability** (tables, bullet points) while embedding search terms.  
-- **Links concepts to real-world queries** (e.g., "What diode is used?" → `1N5824`).  
-- **Prioritizes component-level details** (pin numbers, capacitor values) for engineering use cases.  
-- **Validates against visual content** (e.g., corrects text’s `220 pF` to `220 μF` based on diagram).  
-
-> **Note for Indexing Systems**: This description explicitly connects text inconsistencies (e.g., "5.0y" → "5.0V") to actual circuit values, ensuring search engines map user queries to correct technical data. The inclusion of package codes (NDH/KTT), revision dates, and IC pin functions targets both design engineers and procurement teams.
+INDUCTANCE | CURRENT SCHOTT RENCO PULSE ENGINEERING COILCRAFT (HH) (A) THROUGH- | SURFACE- | THROUGH- | SURFACE- | THROUGH- | SURFACE- SURFACE- HOLE MOUNT HOLE MOUNT HOLE MOUNT MOUNT 133 |o2 3.10 67148300 |6714e500 | "1289-224 — PE-... [Contains 1 table(s)]
 
 TABLES:
 Table 1:
-<table><thead><tr><th>PART NUMBER</th><th>PACKAGE")</th><th>BODY SIZE (NOM)</th></tr></thead><tbody><tr><td></td><td>NDH (TO-220, 5)</td><td>14.986 mm x 10.16 mm</td></tr><tr><td>LM2596</td><td>KTT (TO-263, 5)</td><td>10.10 mm x 8.89 mm</td></tr></tbody></table>
+<table><thead><tr><th></th><th>(HH)</th><th>(A)</th><th>THROUGH- HOLE</th><th>| SURFACE- MOUNT</th><th>| THROUGH- | HOLE</th><th>SURFACE- MOUNT</th><th>| THROUGH- HOLE</th><th>| SURFACE- MOUNT</th><th>SURFACE- MOUNT</th></tr></thead><tbody><tr><td>[33</td><td>|o9</td><td>3.10</td><td>67148390</td><td>67148500</td><td>Ri 1289-22-4</td><td>_</td><td>PE-53933</td><td>| PE-53933-S_</td><td>| DO5022P-223</td></tr><tr><td>[34</td><td>fas</td><td>3.40</td><td>67148400</td><td>[67148790</td><td>| Rn 1283-154</td><td>_</td><td>PE-53934</td><td>| PE-53934-S</td><td>|D05022P-153</td></tr><tr><td>135</td><td>[220</td><td>1.70</td><td>67144170</td><td>—</td><td>RL-5473-1</td><td>_—</td><td>PE-53935</td><td>| PE-53935-S</td><td>_</td></tr><tr><td>136</td><td>[150</td><td>2.10</td><td>67144180</td><td>—</td><td>RL-5473-4</td><td>—</td><td>PE-54036</td><td>| PE-54036-S</td><td>—</td></tr><tr><td>137</td><td>| 100</td><td>2.50</td><td>67144190</td><td>—</td><td>RL-5472-1</td><td>—</td><td>PE-54037 __</td><td>| PE-54037-S</td><td>—</td></tr><tr><td>138</td><td>[68</td><td>3.10</td><td>67144200</td><td>—</td><td>RL-5472-2</td><td>—</td><td>PE-54038</td><td>| PE-54038-S</td><td>—</td></tr><tr><td>L39</td><td>[47</td><td>3.50</td><td>67144210</td><td>—</td><td>RL-5472-3</td><td>—</td><td>PE-54039</td><td>| PE-54039-S</td><td>_</td></tr><tr><td>L40</td><td>[33</td><td>3.50</td><td>67144220</td><td>|67148290</td><td>‘| RL-5472-4</td><td>—</td><td>PE-54040</td><td>| PE-54040-S</td><td>—</td></tr><tr><td>Lai</td><td>[22</td><td>3.50</td><td>67144230</td><td>(67148300</td><td>| RL-5472-5</td><td>_</td><td>PE-54041</td><td>| PE-54041-S</td><td>—</td></tr><tr><td>42</td><td>|150</td><td>270</td><td>67148410</td><td>—</td><td>RL-5473-4</td><td>—</td><td>PE-54042</td><td>| PE-54042-S</td><td>—</td></tr><tr><td>143</td><td>| 100</td><td>3.40</td><td>67144240</td><td>—</td><td>RL-5473-2</td><td>—</td><td>PE-54043</td><td></td><td>—</td></tr></tbody></table>
+
+
+--- Chunk 2 ---
+SUMMARY:
+9.2.1.2.2 Inductor Selection (L1)
+
+1. Select the correct inductor value selection guide from Figure 9-5, Figure 9-6, or Figure 9-7 (output voltages of 3.3 V, 5 V, or 12 V respectively). Use the inductor selection guide for the 5-V version shown in Figure 9-6.
+
+2. From the inductor value selection guide, identify the inductance region intersected by the maximum input voltage line and the maximum load current line. Each region is identified by an inductance value and an inductor code (LXX). From the inductor value selection guide shown in Figure 9-6, the inductance region intersected by the 12-V horizontal line and the 3-A vertical line is 33 UH, and the inductor code is L40.
+
+3. Select an appropriate inductor from the four manufacturer's part numbers listed in Table 9-1. The inductance value required is 33 UH. See row L40 of Table 9-1 and choose an inductor part number from any of the manufacturers shown. In most instances, both through-hole and surface-mount inductors are available.
+
+
+--- Chunk 3 ---
+SUMMARY:
+Inductors are available in different styles such as pot core, toroid, E-core, bobbin core, and so forth, as well as different core materials, such as ferrites and powdered iron. The least expensive, the bobbin, rod or stick core, consists of wire wound on a ferrite bobbin. This type of construction makes for an inexpensive inductor, but because the magnetic flux is not completely contained within the core, it generates more Electro-Magnetic Interference (EMI). This magnetic flux can induce voltages into nearby printed-circuit traces, thus causing problems with both the switching regulator operation and nearby sensitive circuitry, and can give incorrect scope readings because of induced voltages in the scope probe (see Section 9.1.7).
+
+When multiple switching regulators are located on the same PCB, open-core magnetics can cause interference between two or more of the regulator circuits, especially at high currents. A torroid or E-core inductor (closed magnetic structure) must be used in these situations.
+
+The inductors listed in the selection chart include ferrite E-core construction for Schottky, ferrite bobbin core for Renco and Coilcraft, and powdered iron toroid for Pulse Engineering.
+
+Exceeding the maximum current rating of the inductor can cause the inductor to overheat because of the copper wire losses, or the core can saturate. If the inductor begins to saturate, the inductance decreases rapidly and the inductor begins to look mainly resistive (the DC resistance of the winding). This can cause the switch current to rise very rapidly and force the switch into a cycle-by-cycle current limit, thus reducing the DC output load current. This can also result in overheating of the inductor or the LM2596. Different inductor types have different saturation characteristics, so consider this when selecting an inductor.
+
+The inductor manufacturer's data sheets include current and energy limits to avoid inductor saturation.
+
+For continuous mode operation, see the inductor selection graphs in Figure 9-5 through Figure 9-8.
+
+Copyright © 2023 Texas Instruments Incorporated
+
+Submit Document Feedback 19
+
+
+--- Chunk 4 ---
+SUMMARY:
+After the Aljyp value is Known, use these equations to calculate additional information about the switching regulator circuit.
+
+Al Peak Inductor or peak switch current = (t.oap + 0) = (2.5 A + Ogg A) = 2.81A (1)
+
+a a ; ; _ ATIND _ 0.62A _ Minimum load current before the circuit becomes discontinuous = —;— = —jz— = 0.31A (2)
+
+Output Ripple Voltage = (A Ijjp) (ESR of Coyr) = (0.62 A)(0.1 2) = 62 MVyy, (3)
+
+_ (Output Ripple Voltage\ — 0.062V _
+
+22 Submit Document Feedback
+
+Copyright © 2023 Texas Instruments Incorporated
+
+Product Folder Links: LM2596
+
+LM2596 SNVS124G — NOVEMBER 1999 — REVISED MARCH 2023
+
+
+--- Chunk 5 ---
+SUMMARY:
+7.5 Electrical Characteristics — 3.3-V Version
+
+Specifications are for Ty = 25°C (unless otherwise noted)
+
+PARAMETER TEST CONDITIONS MIN ) TYP) MAX) UNIT SYSTEM PARAMETERS °°) (see Figure 9-13 for test circuit) 475V<S Vins 40V, Ty = 25°C 3.168 3.3 3.432 Vv Output voltage Vv OUT P g 0.2ASloap<3A -40°... [Contains 1 table(s)]
+
+TABLES:
+Table 1:
+<table><thead><tr><th colspan="2">PARAMETER</th><th colspan="2">TEST CONDITIONS</th><th>MIN )</th><th>TYP)</th><th rowspan="3">MAX) 3.432</th><th rowspan="2">UNIT</th></tr><tr><th colspan="2">SYSTEM PARAMETERS °°)</th><th>(see Figure 9-13 for test circuit)</th><th></th><th></th><th></th></tr></thead><tbody><tr><td rowspan="2">Vv OUT</td><td rowspan="2">Output voltage P 9</td><td>475V&lt;S Vins 40V,</td><td>Ty = 25°C</td><td>3.168</td><td>3.3</td><td rowspan="2">Vv</td></tr><tr><td>0.2AShoap&lt;3A</td><td>-40°C $&lt; T; &lt; 125°C</td><td>3.135</td><td></td><td>3.465</td></tr></tbody></table>
 
 
 The images above are figures from the document. Use the summaries, tables, and images together to provide a detailed answer.
