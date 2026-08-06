@@ -75,6 +75,14 @@ ENHANCEMENT_TEMPERATURE: float = 0.0
 ENHANCEMENT_MAX_TOKENS: int = 1024
 
 # ---------------------------------------------------------------------------
+# API server
+# ---------------------------------------------------------------------------
+# Base URL of the FastAPI backend.  The Streamlit dashboard talks to this
+# instead of loading the vector store itself.  Override in .env / secrets
+# when the backend runs elsewhere (e.g. a deployed URL).
+API_BASE_URL: str = os.getenv("API_BASE_URL", "http://localhost:8000")
+
+# ---------------------------------------------------------------------------
 # Vector store settings
 # ---------------------------------------------------------------------------
 CHROMA_COLLECTION_METADATA: dict = {"hnsw:space": "cosine"}

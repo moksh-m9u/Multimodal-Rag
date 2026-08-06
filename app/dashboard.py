@@ -4,6 +4,7 @@ import sys
 import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import json
 import base64
@@ -13,18 +14,70 @@ from pathlib import Path
 from typing import Any, Optional
 
 import streamlit as st
+
+
+def _merge_streamlit_secrets() -> None:
+    """Expose Streamlit secrets as environment variables.
+
+    Locally the app reads ``.env`` (gitignored).  On Streamlit Cloud the
+    equivalent is ``st.secrets``, but not every runtime surfaces those as
+    process environment variables for third-party SDKs (LangSmith, Hugging
+    Face, Gemini).  Copying them into ``os.environ`` before the settings and
+    tracing modules are imported guarantees all backends read the same config
+    in both environments.
+    """
+    try:
+        for key, value in st.secrets.items():
+            os.environ.setdefault(str(key), str(value))
+    except Exception:
+        pass
+
+_merge_streamlit_secrets()
+
 import pandas as pd
 from PIL import Image
 import plotly.express as px
 
-from config.settings import CHROMA_PERSIST_DIR
-from src.documents import extract_original_data
+from config.settings import API_BASE_URL
 from src.logger import get_logger
+
+from api_client import health as api_health
+from api_client import stream as api_stream
 
 logger = get_logger(__name__)
 
 PAGE_TITLE = "Multimodal RAG Chunk Inspector"
 LAYOUT = "wide"
+
+
+def log_tracing_status() -> None:
+    """Log whether LangSmith tracing is enabled in this runtime.
+
+    ``@traceable`` silently becomes a no-op when tracing is not configured, so
+    the app still runs but produces no traces.  These lines make the Cloud
+    startup logs show exactly what the SDK sees.
+    """
+    flag = os.getenv("LANGSMITH_TRACING_V2") or os.getenv("LANGCHAIN_TRACING_V2")
+    api_key = os.getenv("LANGSMITH_API_KEY") or os.getenv("LANGCHAIN_API_KEY")
+    project = (
+        os.getenv("LANGSMITH_PROJECT") or os.getenv("LANGCHAIN_PROJECT") or "default"
+    )
+    background = os.getenv("LANGSMITH_TRACING_BACKGROUND", "true")
+
+    logger.info(
+        "LangSmith tracing: enabled=%s, api_key_set=%s, project=%r, "
+        "background_post=%s",
+        bool(flag and str(flag).lower() == "true"),
+        bool(api_key),
+        project,
+        background,
+    )
+    if not (flag and str(flag).lower() == "true") or not api_key:
+        logger.warning(
+            "LangSmith tracing appears DISABLED. Set LANGSMITH_TRACING_V2=true "
+            "and LANGSMITH_API_KEY (or LANGCHAIN_* equivalents) in Streamlit "
+            "secrets, then confirm the project name matches the one you view."
+        )
 
 
 def init_state() -> None:
@@ -45,8 +98,7 @@ def init_state() -> None:
         "compare_b": None,
         "chat_query": "",
         "chat_answer": None,
-        "chat_chunks": None,
-        "chat_vs_path": CHROMA_PERSIST_DIR,
+        "chat_retrieval": None,
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -308,7 +360,7 @@ def render_chunk_list(data: list[dict]) -> None:
     df = build_chunk_df(data)
     selection = st.dataframe(
         df,
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
         column_config={
             "Chunk ID": st.column_config.NumberColumn(width="small"),
@@ -461,7 +513,7 @@ def _render_images_tab(images: list[str]) -> None:
 
         col1, col2 = st.columns([3, 1])
         with col1:
-            st.image(img, use_container_width=True)
+            st.image(img, width="stretch")
         with col2:
             st.write(f"**Width:** {img.width} px")
             st.write(f"**Height:** {img.height} px")
@@ -477,7 +529,7 @@ def _render_images_tab(images: list[str]) -> None:
             )
 
         with st.expander(f"Zoom Image {i}"):
-            st.image(img, use_container_width=False, width=800)
+            st.image(img, width=800)
 
 
 def _render_tables_tab(tables: list[str]) -> None:
@@ -489,7 +541,7 @@ def _render_tables_tab(tables: list[str]) -> None:
         st.subheader(f"Table {i}")
         df = parse_table_html(html)
         if df is not None:
-            st.dataframe(df, use_container_width=True)
+            st.dataframe(df, width="stretch")
         else:
             st.warning(
                 f"Could not parse Table {i} as DataFrame. Showing raw HTML."
@@ -610,7 +662,7 @@ def render_analytics(data: list[dict]) -> None:
             labels={"images": "Image Count", "count": "Chunks"},
             nbins=df["images"].max() + 1,
         )
-        st.plotly_chart(fig1, use_container_width=True)
+        st.plotly_chart(fig1, width="stretch")
     with col2:
         fig2 = px.histogram(
             df,
@@ -619,7 +671,7 @@ def render_analytics(data: list[dict]) -> None:
             labels={"tables": "Table Count", "count": "Chunks"},
             nbins=df["tables"].max() + 1,
         )
-        st.plotly_chart(fig2, use_container_width=True)
+        st.plotly_chart(fig2, width="stretch")
 
     col3, col4 = st.columns(2)
     with col3:
@@ -629,7 +681,7 @@ def render_analytics(data: list[dict]) -> None:
             title="Distribution of Raw Text Length",
             labels={"raw_len": "Character Count", "count": "Chunks"},
         )
-        st.plotly_chart(fig3, use_container_width=True)
+        st.plotly_chart(fig3, width="stretch")
     with col4:
         fig4 = px.histogram(
             df,
@@ -637,7 +689,7 @@ def render_analytics(data: list[dict]) -> None:
             title="Distribution of Enhanced Content Length",
             labels={"enhanced_len": "Character Count", "count": "Chunks"},
         )
-        st.plotly_chart(fig4, use_container_width=True)
+        st.plotly_chart(fig4, width="stretch")
 
     st.subheader("Top 20 Lists")
     tcol1, tcol2, tcol3 = st.columns(3)
@@ -645,17 +697,17 @@ def render_analytics(data: list[dict]) -> None:
     with tcol1:
         st.markdown("**Largest Chunks (raw text)**")
         top_raw = df.nlargest(20, "raw_len")[["chunk_id", "raw_len"]]
-        st.dataframe(top_raw, use_container_width=True)
+        st.dataframe(top_raw, width="stretch")
 
     with tcol2:
         st.markdown("**Most Images**")
         top_img = df.nlargest(20, "images")[["chunk_id", "images"]]
-        st.dataframe(top_img, use_container_width=True)
+        st.dataframe(top_img, width="stretch")
 
     with tcol3:
         st.markdown("**Most Tables**")
         top_tbl = df.nlargest(20, "tables")[["chunk_id", "tables"]]
-        st.dataframe(top_tbl, use_container_width=True)
+        st.dataframe(top_tbl, width="stretch")
 
 
 def page_explorer(data: list[dict]) -> None:
@@ -701,25 +753,67 @@ def page_explorer(data: list[dict]) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Query & Retrieve page
+# Query & Retrieve page (talks to the FastAPI backend)
 # ---------------------------------------------------------------------------
-@st.cache_resource
-def _load_retrieval_pipeline(persist_dir: str):
-    """Load embedding model, vector store, and retriever (cached)."""
-    from src.embed import load_embedding_model
-    from src.retrieval.search import load_vector_store, build_retriever
+def _render_chunk_payload(payload: dict, index: int) -> None:
+    """Render one retrieved chunk from an API ``ChunkPayload`` dict."""
+    raw_text = payload.get("raw_text", "")
+    tables = payload.get("tables_html", [])
+    image_urls = payload.get("image_urls", [])
+    enhanced = payload.get("enhanced_content", "")
 
-    model = load_embedding_model()
-    db = load_vector_store(model)
-    # Override persist directory if given
-    if persist_dir != CHROMA_PERSIST_DIR:
-        from langchain_chroma import Chroma
-        db = Chroma(
-            persist_directory=persist_dir,
-            embedding_function=model,
-        )
-    retriever = build_retriever(db)
-    return retriever
+    label = (
+        f"Chunk {index + 1}  —  "
+        f"Images: {len(image_urls)}  |  "
+        f"Tables: {len(tables)}  |  "
+        f"Raw: {len(raw_text)} chars  |  "
+        f"Enhanced: {len(enhanced)} chars"
+    )
+
+    with st.expander(label, expanded=index == 0):
+        tab_e, tab_r, tab_i, tab_t = st.tabs(["Enhanced", "Raw Text", "Images", "Tables"])
+
+        with tab_e:
+            st.markdown(enhanced)
+
+        with tab_r:
+            st.metric("Words", len(raw_text.split()))
+            st.text_area(
+                "raw",
+                value=raw_text,
+                height=250,
+                disabled=True,
+                label_visibility="collapsed",
+                key=f"api_raw_{index}",
+            )
+
+        with tab_i:
+            if not image_urls:
+                st.info("No images in this chunk.")
+            else:
+                for j, url in enumerate(image_urls):
+                    st.image(url, width=400, caption=f"Image {j + 1}")
+
+        with tab_t:
+            if not tables:
+                st.info("No tables in this chunk.")
+            else:
+                for j, html in enumerate(tables):
+                    st.markdown(f"**Table {j + 1}**")
+                    df = parse_table_html(html)
+                    if df is not None:
+                        st.dataframe(df, width="stretch")
+                    else:
+                        st.warning("Could not parse table.")
+                        st.code(html, language="html")
+
+
+def _render_retrieval(retrieval: dict) -> None:
+    """Render the ``chunks`` of a retrieve/query API response."""
+    chunks = retrieval.get("chunks", [])
+    with st.expander(f"**Referenced Chunks** — {len(chunks)} chunks", expanded=True):
+        for i, payload in enumerate(chunks):
+            _render_chunk_payload(payload, i)
 
 
 def render_chat_page() -> None:
@@ -727,23 +821,24 @@ def render_chat_page() -> None:
 
     st.markdown(
         "Enter a query to search the vector store and generate "
-        "a multimodal answer with referenced chunks."
+        "a multimodal answer with referenced chunks. All retrieval and "
+        "generation runs on the FastAPI backend."
     )
 
-    vs_path = st.text_input(
-        "Vector store path",
-        value=st.session_state.chat_vs_path,
-        key="chat_vs_path_input",
-    )
-
+    # Check the backend is reachable before doing anything else.
     try:
-        with st.spinner("Loading vector store ..."):
-            retriever = _load_retrieval_pipeline(vs_path)
-        st.success("Vector store ready.")
-    except Exception as e:
-        st.error(f"Could not load vector store at `{vs_path}`. "
-                 f"Run the ingestion pipeline first. Error: {e}")
-        return
+        backend_status = api_health()
+        backend_ok = backend_status.get("status") == "ok"
+    except Exception:
+        backend_ok = False
+
+    if not backend_ok:
+        st.error(
+            f"Backend API unreachable at `{API_BASE_URL}`. "
+            f"Start it with `uvicorn api.main:app --reload --port 8000`."
+        )
+    else:
+        st.success(f"Backend connected — vector store: {backend_status.get('vector_store')}")
 
     query = st.text_area(
         "Query",
@@ -754,180 +849,65 @@ def render_chat_page() -> None:
 
     col1, col2 = st.columns([1, 5])
     with col1:
-        submitted = st.button("Search", type="primary", use_container_width=True)
+        submitted = st.button("Search", type="primary", width="stretch")
     with col2:
-        clear = st.button("Clear", use_container_width=True)
+        clear = st.button("Clear", width="stretch")
         if clear:
             st.session_state.chat_answer = None
-            st.session_state.chat_chunks = None
+            st.session_state.chat_retrieval = None
             st.rerun()
 
     if submitted and query.strip():
         st.session_state.chat_query = query
+        try:
+            events = api_stream(query)
+            status = st.status("Retrieving relevant chunks ...", expanded=True)
+            answer_placeholder = st.empty()
+            collected: list[str] = []
 
-        from src.retrieval.generate import answer_query_stream
-
-        # --- Single trace: retrieve + stream answer ---
-        status = st.status("Retrieving relevant chunks ...", expanded=True)
-        stream_gen = answer_query_stream(retriever, query)
-        chunks = stream_gen.chunks
-        st.session_state.chat_chunks = chunks
-
-        logger.info("Retrieved %d chunks for query: %s", len(chunks), query)
-
-        status.update(
-            label=f"Retrieved {len(chunks)} chunks",
-            state="complete",
-            expanded=False,
-        )
-
-        # --- Chunks with full detail, appearing progressively ---
-        with st.expander(f"**Referenced Chunks** — {len(chunks)} chunks", expanded=True):
-            for i, chunk in enumerate(chunks):
-                data = extract_original_data(chunk)
-                raw_text = data.get("raw_text", "")
-                tables = data.get("tables_html", [])
-                images_b64 = data.get("images_base64", [])
-                enhanced = chunk.page_content
-
-                label = (
-                    f"Chunk {i + 1}  —  "
-                    f"Images: {len(images_b64)}  |  "
-                    f"Tables: {len(tables)}  |  "
-                    f"Raw: {len(raw_text)} chars  |  "
-                    f"Enhanced: {len(enhanced)} chars"
-                )
-
-                with st.expander(label, expanded=i == 0):
-                    tab_e, tab_r, tab_i, tab_t = st.tabs(
-                        ["Enhanced", "Raw Text", "Images", "Tables"]
+            for event, data in events:
+                if event == "retrieval":
+                    retrieval = data
+                    chunks = retrieval.get("chunks", [])
+                    st.session_state.chat_retrieval = retrieval
+                    status.update(
+                        label=f"Retrieved {len(chunks)} chunks",
+                        state="complete",
+                        expanded=False,
                     )
+                    _render_retrieval(retrieval)
+                elif event == "token":
+                    collected.append(data.get("delta", ""))
+                    answer_placeholder.markdown(f"### Answer\n\n{''.join(collected)}▌")
+                elif event == "done":
+                    answer_placeholder.markdown(f"### Answer\n\n{data.get('answer', '')}")
+                    st.session_state.chat_answer = data.get("answer", "")
+                elif event == "error":
+                    status.update(label="Answer generation failed", state="error")
+                    st.error(data.get("message", "Unknown backend error"))
 
-                    with tab_e:
-                        st.markdown(enhanced)
+            if not collected:
+                answer_placeholder.markdown("### Answer\n\n*No answer returned.*")
+        except Exception as e:
+            st.error(f"Query failed: {e}")
 
-                    with tab_r:
-                        wc = len(raw_text.split())
-                        st.metric("Words", wc)
-                        st.text_area(
-                            "raw",
-                            value=raw_text,
-                            height=250,
-                            disabled=True,
-                            label_visibility="collapsed",
-                            key=f"raw_{i}"
-                        )
-
-                    with tab_i:
-                        if not images_b64:
-                            st.info("No images in this chunk.")
-                        else:
-                            for j, b64 in enumerate(images_b64):
-                                img = render_image_from_base64(b64)
-                                if img is None:
-                                    st.warning(f"Image {j + 1} malformed.")
-                                    continue
-                                st.image(img, width=400, caption=f"Image {j + 1}")
-
-                    with tab_t:
-                        if not tables:
-                            st.info("No tables in this chunk.")
-                        else:
-                            for j, html in enumerate(tables):
-                                st.markdown(f"**Table {j + 1}**")
-                                df = parse_table_html(html)
-                                if df is not None:
-                                    st.dataframe(df, use_container_width=True)
-                                else:
-                                    st.warning("Could not parse table.")
-                                    st.code(html, language="html")
-
-                time.sleep(0.05)
-
-        # --- Streaming answer ---
-        answer_placeholder = st.empty()
-        collected = ""
-        for token in stream_gen:
-            collected += token
-            answer_placeholder.markdown(f"### Answer\n\n{collected}▌")
-        answer_placeholder.markdown(f"### Answer\n\n{collected}")
-        st.session_state.chat_answer = collected
-
-    # Display results from session state (on subsequent runs)
+    # Display persisted results on subsequent script runs.
     answer = st.session_state.get("chat_answer")
-    chunks = st.session_state.get("chat_chunks")
+    retrieval = st.session_state.get("chat_retrieval")
 
-    if answer is None or chunks is None:
+    if answer is None and retrieval is None:
         st.info("Enter a query and press Search to get started.")
         return
 
     if submitted and query.strip():
         return
 
-    # Answer
-    st.markdown("### Answer")
-    st.markdown(answer)
+    if retrieval:
+        _render_retrieval(retrieval)
 
-    # Referenced chunks
-    with st.expander(f"**Referenced Chunks** — {len(chunks)} chunks", expanded=True):
-        for i, chunk in enumerate(chunks):
-            data = extract_original_data(chunk)
-            raw_text = data.get("raw_text", "")
-            tables = data.get("tables_html", [])
-            images_b64 = data.get("images_base64", [])
-            enhanced = chunk.page_content
-
-            label = (
-                f"Chunk {i + 1}  —  "
-                f"Images: {len(images_b64)}  |  "
-                f"Tables: {len(tables)}  |  "
-                f"Raw: {len(raw_text)} chars  |  "
-                f"Enhanced: {len(enhanced)} chars"
-            )
-
-            with st.expander(label, expanded=i == 0):
-                tab_e, tab_r, tab_i, tab_t = st.tabs(
-                    ["Enhanced", "Raw Text", "Images", "Tables"]
-                )
-
-                with tab_e:
-                    st.markdown(enhanced)
-
-                with tab_r:
-                    wc = len(raw_text.split())
-                    st.metric("Words", wc)
-                    st.text_area(
-                        "raw",
-                        value=raw_text,
-                        height=250,
-                        disabled=True,
-                        label_visibility="collapsed",
-                        key=f"raw_{i}",
-                    )
-
-                with tab_i:
-                    if not images_b64:
-                        st.info("No images in this chunk.")
-                    else:
-                        for j, b64 in enumerate(images_b64):
-                            img = render_image_from_base64(b64)
-                            if img is None:
-                                st.warning(f"Image {j + 1} malformed.")
-                                continue
-                            st.image(img, width=400, caption=f"Image {j + 1}")
-
-                with tab_t:
-                    if not tables:
-                        st.info("No tables in this chunk.")
-                    else:
-                        for j, html in enumerate(tables):
-                            st.markdown(f"**Table {j + 1}**")
-                            df = parse_table_html(html)
-                            if df is not None:
-                                st.dataframe(df, use_container_width=True)
-                            else:
-                                st.warning("Could not parse table.")
-                                st.code(html, language="html")
+    if answer:
+        st.markdown("### Answer")
+        st.markdown(answer)
 
 
 def main() -> None:
@@ -989,4 +969,5 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    log_tracing_status()
     main()
