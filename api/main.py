@@ -20,10 +20,12 @@ from contextlib import asynccontextmanager
 
 import uvicorn
 from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, StreamingResponse
 
 from api.schemas import QueryRequest, QueryResponse, RetrieveRequest, RetrieveResponse
 from api.service import RAGService
+from config.settings import CORS_ALLOWED_ORIGINS
 from src.retrieval.generate import answer_query_stream
 
 # ---------------------------------------------------------------------------
@@ -119,6 +121,16 @@ app = FastAPI(
         "like *\"Tell me about the pin configuration of the LM317.\"*"
     ),
     lifespan=lifespan,
+)
+
+# Browser access: allow the configured origins (e.g. the local Vite dev server,
+# and later the production frontend URL).  Non-browser callers are unaffected.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=CORS_ALLOWED_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 

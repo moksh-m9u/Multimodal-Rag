@@ -230,11 +230,13 @@ can load them.
 
 ## 7. Prerequisites before you point a browser at this
 
-- **CORS:** the API currently has **no CORS middleware**. A browser page served
-  from a different origin (e.g. `localhost:5173` → API on `localhost:8000`, or
-  `your-frontend.vercel.app` → `your-api.railway.app`) will be blocked unless
-  the backend adds permissive/`your-origin` headers. Backend work is required;
-  if you hit this, ask the backend owner to add the allowed origins.
+- **CORS:** the API **allows browser access** from a configured allow-list of
+  origins (currently `http://localhost:5173`, `http://localhost:3000`,
+  `http://127.0.0.1:5173` — your local Vite dev server is covered). For a
+  production frontend URL, the backend must add it to
+  `CORS_ALLOWED_ORIGINS` (a comma-separated env var), e.g.
+  `CORS_ALLOWED_ORIGINS=https://app.example.com,http://localhost:5173`.
+  Non-browser clients are unaffected.
 
 - **Health check:** always `GET /health` before hammering the API — the vector
   store loads lazily, so the very first request can take a few seconds.

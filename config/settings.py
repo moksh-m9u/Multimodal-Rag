@@ -82,6 +82,15 @@ ENHANCEMENT_MAX_TOKENS: int = 1024
 # when the backend runs elsewhere (e.g. a deployed URL).
 API_BASE_URL: str = os.getenv("API_BASE_URL", "http://localhost:8000")
 
+# Browser origins allowed to call the API (CORS).  Comma-separated so you can
+# add the production frontend URL later, e.g.
+#   CORS_ALLOWED_ORIGINS=https://app.example.com,http://localhost:5173
+# Non-browser clients (curl, servers, mobile) are never blocked by CORS.
+_CORS_DEFAULT = "http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173"
+CORS_ALLOWED_ORIGINS: list[str] = [
+    o.strip() for o in os.getenv("CORS_ALLOWED_ORIGINS", _CORS_DEFAULT).split(",") if o.strip()
+]
+
 # ---------------------------------------------------------------------------
 # Vector store settings
 # ---------------------------------------------------------------------------
