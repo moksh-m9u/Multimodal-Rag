@@ -53,6 +53,16 @@ RETRIEVAL_SEARCH_TYPE: str = "mmr"
 # ---------------------------------------------------------------------------
 GENERATION_TEMPERATURE: float = 0.0
 
+# Per-1M-token pricing used to estimate generation cost (USD) from reported
+# usage metadata.  Override via env when using a different provider/model.
+# Defaults match gemini-2.5-flash-lite.  Set to 0 to disable the estimate.
+GENERATION_INPUT_PRICE_PER_1M: float = float(
+    os.getenv("GENERATION_INPUT_PRICE_PER_1M", "0.10")
+)
+GENERATION_OUTPUT_PRICE_PER_1M: float = float(
+    os.getenv("GENERATION_OUTPUT_PRICE_PER_1M", "0.40")
+)
+
 # ---------------------------------------------------------------------------
 # PDF extraction settings (unstructured partition_pdf)
 # ---------------------------------------------------------------------------

@@ -210,10 +210,15 @@ async def retrieve(request: Request, req: RetrieveRequest) -> RetrieveResponse:
 async def query(request: Request, req: QueryRequest) -> QueryResponse:
     """Retrieve chunks and generate a full answer from the multimodal LLM."""
     try:
-        answer, base = await request.app.state.service.answer(req.query, req.top_k)
+        answer, base, usage = await request.app.state.service.answer(req.query, req.top_k)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
-    return QueryResponse(**base.model_dump(), answer=answer, answer_characters=len(answer))
+    return QueryResponse(
+        **base.model_dump(),
+        answer=answer,
+        answer_characters=len(answer),
+        usage=usage,
+    )
 
 
 def _sse(event: str, data: dict) -> str:
@@ -283,6 +288,7 @@ async def query_stream(
                     "answer_characters": len(answer),
                     "response_id": base.response_id,
                     "num_chunks": base.num_chunks,
+                    "usage": stream.usage,
                 },
             )
         except Exception as exc:

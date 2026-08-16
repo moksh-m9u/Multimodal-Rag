@@ -99,6 +99,7 @@ def init_state() -> None:
         "chat_query": "",
         "chat_answer": None,
         "chat_retrieval": None,
+        "chat_usage": None,
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -816,6 +817,30 @@ def _render_retrieval(retrieval: dict) -> None:
             _render_chunk_payload(payload, i)
 
 
+def _render_usage(usage: Optional[dict]) -> None:
+    """Render token usage and generation stats returned by the backend."""
+    if not usage:
+        return
+
+    st.markdown("#### Usage")
+    col_a, col_b, col_c, col_d = st.columns(4)
+    col_a.metric("Model", usage.get("model", "—"))
+    col_b.metric("Input tokens", usage.get("input_tokens", 0))
+    col_c.metric("Output tokens", usage.get("output_tokens", 0))
+    col_d.metric("Total tokens", usage.get("total_tokens", 0))
+
+    latency = usage.get("latency_ms")
+    latency_label = f"{latency:,.0f} ms" if isinstance(latency, (int, float)) else "—"
+    cost = usage.get("estimated_cost_usd")
+    cost_label = f"${cost:.6f}" if isinstance(cost, (int, float)) else "—"
+
+    col_e, col_f, col_g, col_h = st.columns(4)
+    col_e.metric("Latency", latency_label)
+    col_f.metric("Prompt", f"{usage.get('prompt_chars', 0)} chars")
+    col_g.metric("Images", usage.get("prompt_images", 0))
+    col_h.metric("Est. cost", cost_label)
+
+
 def render_chat_page() -> None:
     st.header("Query & Retrieve")
 
@@ -855,6 +880,7 @@ def render_chat_page() -> None:
         if clear:
             st.session_state.chat_answer = None
             st.session_state.chat_retrieval = None
+            st.session_state.chat_usage = None
             st.rerun()
 
     if submitted and query.strip():
@@ -882,6 +908,8 @@ def render_chat_page() -> None:
                 elif event == "done":
                     answer_placeholder.markdown(f"### Answer\n\n{data.get('answer', '')}")
                     st.session_state.chat_answer = data.get("answer", "")
+                    st.session_state.chat_usage = data.get("usage")
+                    _render_usage(data.get("usage"))
                 elif event == "error":
                     status.update(label="Answer generation failed", state="error")
                     st.error(data.get("message", "Unknown backend error"))
@@ -908,6 +936,8 @@ def render_chat_page() -> None:
     if answer:
         st.markdown("### Answer")
         st.markdown(answer)
+
+    _render_usage(st.session_state.get("chat_usage"))
 
 
 def main() -> None:
