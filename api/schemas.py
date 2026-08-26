@@ -52,6 +52,17 @@ class QueryRequest(BaseModel):
         description="How many chunks to retrieve from the vector store.",
         examples=[10],
     )
+    max_images: int = Field(
+        0,
+        ge=0,
+        le=50,
+        description=(
+            "Maximum number of images to send to the model. "
+            "0 means send all retrieved images (no limit). "
+            "Lower values reduce token cost for vision-heavy documents."
+        ),
+        examples=[10],
+    )
 
     model_config = ConfigDict(json_schema_extra={"examples": QUERY_EXAMPLES})
 
@@ -262,3 +273,92 @@ class QueryResponse(RetrieveResponse):
             }
         }
     )
+
+
+class CustomQueryRequest(BaseModel):
+    """A custom provider/model query request.
+
+    Allows specifying the LLM provider, model, and API key at request time.
+    """
+
+    query: str = Field(
+        ...,
+        min_length=1,
+        max_length=2000,
+        description="The user's question about the documents.",
+        examples=["Tell me about the pin configuration of the LM2596."],
+    )
+    top_k: int = Field(
+        10,
+        ge=1,
+        le=30,
+        description="How many chunks to retrieve from the vector store.",
+        examples=[10],
+    )
+    provider: str = Field(
+        ...,
+        description="Provider ID: 'gemini', 'groq', 'huggingface', or 'openai'",
+        examples=["gemini"],
+    )
+    model: str = Field(
+        ...,
+        description="Model ID (must be valid for the selected provider)",
+        examples=["gemini-3.5-flash-lite"],
+    )
+    api_key: str = Field(
+        ...,
+        min_length=1,
+        description="API key for the selected provider",
+    )
+    temperature: float = Field(
+        0.0,
+        ge=0.0,
+        le=2.0,
+        description="Sampling temperature for generation.",
+        examples=[0.0],
+    )
+    max_tokens: int = Field(
+        512,
+        ge=1,
+        le=8192,
+        description="Maximum output tokens to generate.",
+        examples=[512],
+    )
+    max_images: int = Field(
+        0,
+        ge=0,
+        le=50,
+        description=(
+            "Maximum images to send to the model (0 = all). "
+            "Lower values save tokens on vision-heavy documents."
+        ),
+        examples=[10],
+    )
+    thinking: bool = Field(
+        False,
+        description=(
+            "When true, asks the model to output its reasoning in <think> tags. "
+            "Works with models that support chain-of-thought (DeepSeek R1, QwQ, etc.)."
+        ),
+    )
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "query": "Tell me about the pin configuration of the LM2596.",
+                    "top_k": 10,
+                    "provider": "gemini",
+                    "model": "gemini-3.5-flash-lite",
+                    "api_key": "YOUR_API_KEY_HERE",
+                    "temperature": 0.0,
+                    "max_tokens": 512,
+                }
+            ]
+        }
+    )
+
+
+class CustomQueryResponse(QueryResponse):
+    """Response for custom provider query - same as QueryResponse but with explicit usage."""
+    pass

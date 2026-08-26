@@ -33,7 +33,7 @@ ENHANCEMENT_MODEL: str = "zai-org/GLM-4.5V"
 # Router endpoint that serves the enhancement model via the OpenAI protocol.
 ENHANCEMENT_BASE_URL: str = "https://router.huggingface.co/v1"
 # Text generation model used to answer retrieval queries.
-GENERATION_MODEL: str = "gemini-2.5-flash-lite"
+GENERATION_MODEL: str = "gemini-3.5-flash-lite"
 
 # ---------------------------------------------------------------------------
 # Storage locations
@@ -52,6 +52,11 @@ RETRIEVAL_SEARCH_TYPE: str = "mmr"
 # Generation settings
 # ---------------------------------------------------------------------------
 GENERATION_TEMPERATURE: float = 0.0
+
+# Maximum output tokens for the generation model.  Limits cost and prevents
+# runaway responses.  512 is a good balance for concise technical answers;
+# increase if answers get truncated.  Override via env.
+GENERATION_MAX_TOKENS: int = int(os.getenv("GENERATION_MAX_TOKENS", "512"))
 
 # Per-1M-token pricing used to estimate generation cost (USD) from reported
 # usage metadata.  Override via env when using a different provider/model.

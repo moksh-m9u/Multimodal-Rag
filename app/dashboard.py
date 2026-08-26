@@ -9,6 +9,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import json
 import base64
 import io
+import re
 import time
 from pathlib import Path
 from typing import Any, Optional
@@ -39,10 +40,12 @@ from PIL import Image
 import plotly.express as px
 
 from config.settings import API_BASE_URL
+from config.providers import ALL_PROVIDERS, list_models_for_provider
 from src.logger import get_logger
 
 from api_client import health as api_health
 from api_client import stream as api_stream
+from api_client import query_custom
 
 logger = get_logger(__name__)
 
@@ -230,6 +233,18 @@ def _on_filter_change() -> None:
     st.session_state.filtered_indices = None
 
 
+def _parse_thinking(text: str) -> tuple[str, str]:
+    """Extract <think>...</think> blocks from text.
+
+    Returns (thinking_text, answer_text).
+    """
+    pattern = r"<think>(.*?)</think>"
+    matches = re.findall(pattern, text, re.DOTALL)
+    thinking = "\n\n".join(m.strip() for m in matches)
+    answer = re.sub(pattern, "", text, flags=re.DOTALL).strip()
+    return thinking, answer
+
+
 def render_sidebar() -> None:
     with st.sidebar:
         st.header("Data")
@@ -304,6 +319,93 @@ def render_sidebar() -> None:
                 value=100_000,
                 key="max_len",
                 on_change=_on_filter_change,
+            )
+
+        # ── LLM Provider (always visible) ──
+        st.divider()
+        st.subheader("LLM Provider")
+
+        provider_ids = [p.id for p in ALL_PROVIDERS]
+        provider_names = {p.id: p.display_name for p in ALL_PROVIDERS}
+
+        selected_provider = st.selectbox(
+            "Provider",
+            options=provider_ids,
+            format_func=lambda x: provider_names.get(x, x),
+            key="llm_provider",
+            help="Select LLM provider. API key required for custom queries.",
+        )
+
+        if selected_provider:
+            models = list_models_for_provider(selected_provider)
+            model_ids = [m.id for m in models]
+            model_names = {m.id: m.display_name for m in models}
+
+            st.selectbox(
+                "Model",
+                options=model_ids,
+                format_func=lambda x: model_names.get(x, x),
+                key="llm_model",
+                help="Select specific model from the provider",
+            )
+            st.text_input(
+                "Custom Model ID",
+                key="llm_custom_model",
+                placeholder="e.g. qwen/qwen3.8-27b (overrides dropdown)",
+                help="Paste any model ID available on the provider. Leave empty to use dropdown.",
+            )
+
+            st.text_input(
+                "API Key",
+                type="password",
+                key="llm_api_key",
+                placeholder=f"Enter your {provider_names[selected_provider]} API key",
+                help="Your API key for the selected provider. Not stored.",
+            )
+
+            st.number_input(
+                "Temperature",
+                min_value=0.0,
+                max_value=2.0,
+                value=0.0,
+                step=0.1,
+                key="llm_temperature",
+            )
+            st.number_input(
+                "Max Tokens",
+                min_value=1,
+                max_value=8192,
+                value=512,
+                key="llm_max_tokens",
+            )
+            st.number_input(
+                "Max Images",
+                min_value=0,
+                max_value=50,
+                value=0,
+                step=1,
+                key="llm_max_images",
+                help="Max images to send to the model. 0 = all.",
+            )
+            st.number_input(
+                "Retrieved Chunks",
+                min_value=1,
+                max_value=30,
+                value=10,
+                step=1,
+                key="llm_top_k",
+                help="How many chunks to retrieve from the vector store.",
+            )
+
+            st.checkbox(
+                "Use Custom Provider",
+                key="use_custom_provider",
+                help="When checked, queries use the selected provider/model/key instead of the default backend",
+            )
+            st.checkbox(
+                "Thinking Mode",
+                key="llm_thinking",
+                help="Ask the model to show its reasoning. Thinking is displayed separately from the answer.",
             )
 
 
@@ -886,36 +988,119 @@ def render_chat_page() -> None:
     if submitted and query.strip():
         st.session_state.chat_query = query
         try:
-            events = api_stream(query)
-            status = st.status("Retrieving relevant chunks ...", expanded=True)
-            answer_placeholder = st.empty()
-            collected: list[str] = []
+            use_custom = st.session_state.get("use_custom_provider", False)
 
-            for event, data in events:
-                if event == "retrieval":
-                    retrieval = data
-                    chunks = retrieval.get("chunks", [])
-                    st.session_state.chat_retrieval = retrieval
-                    status.update(
-                        label=f"Retrieved {len(chunks)} chunks",
-                        state="complete",
-                        expanded=False,
+            if use_custom:
+                # Custom provider mode - use /query/custom endpoint
+                provider = st.session_state.get("llm_provider")
+                model = st.session_state.get("llm_model")
+                custom_model = (st.session_state.get("llm_custom_model") or "").strip()
+                if custom_model:
+                    model = custom_model
+                api_key = st.session_state.get("llm_api_key")
+                temperature = st.session_state.get("llm_temperature", 0.0)
+                max_tokens = st.session_state.get("llm_max_tokens", 512)
+                max_images = st.session_state.get("llm_max_images", 0)
+                thinking = st.session_state.get("llm_thinking", False)
+
+                if not (provider and model and api_key):
+                    st.error("Please select provider, model, and enter API key for custom provider mode.")
+                    return
+
+                status = st.status(f"Querying {provider}/{model} ...", expanded=True)
+                answer_placeholder = st.empty()
+
+                with st.spinner("Retrieving chunks and generating answer..."):
+                    result = query_custom(
+                        query=query,
+                        top_k=st.session_state.get("llm_top_k", 10),
+                        provider=provider,
+                        model=model,
+                        api_key=api_key,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                        max_images=max_images,
+                        thinking=thinking,
                     )
-                    _render_retrieval(retrieval)
-                elif event == "token":
-                    collected.append(data.get("delta", ""))
-                    answer_placeholder.markdown(f"### Answer\n\n{''.join(collected)}▌")
-                elif event == "done":
-                    answer_placeholder.markdown(f"### Answer\n\n{data.get('answer', '')}")
-                    st.session_state.chat_answer = data.get("answer", "")
-                    st.session_state.chat_usage = data.get("usage")
-                    _render_usage(data.get("usage"))
-                elif event == "error":
-                    status.update(label="Answer generation failed", state="error")
-                    st.error(data.get("message", "Unknown backend error"))
 
-            if not collected:
-                answer_placeholder.markdown("### Answer\n\n*No answer returned.*")
+                retrieval = result
+                chunks = retrieval.get("chunks", [])
+                st.session_state.chat_retrieval = retrieval
+                status.update(
+                    label=f"Retrieved {len(chunks)} chunks",
+                    state="complete",
+                    expanded=False,
+                )
+                _render_retrieval(retrieval)
+
+                answer = result.get("answer", "")
+                # Parse <think> tags from the answer
+                thinking_text, answer_text = _parse_thinking(answer)
+                if thinking_text:
+                    with st.expander("Thinking", expanded=False):
+                        st.markdown(thinking_text)
+                answer_placeholder.markdown(f"### Answer\n\n{answer_text}")
+                st.session_state.chat_answer = answer
+                st.session_state.chat_usage = result.get("usage")
+                _render_usage(result.get("usage"))
+
+            else:
+                # Default backend mode - use streaming
+                events = api_stream(query, top_k=st.session_state.get("llm_top_k", 10))
+                status = st.status("Retrieving relevant chunks ...", expanded=True)
+                answer_placeholder = st.empty()
+                collected: list[str] = []
+                thinking_collected: list[str] = []
+                in_thinking = False
+
+                for event, data in events:
+                    if event == "retrieval":
+                        retrieval = data
+                        chunks = retrieval.get("chunks", [])
+                        st.session_state.chat_retrieval = retrieval
+                        status.update(
+                            label=f"Retrieved {len(chunks)} chunks",
+                            state="complete",
+                            expanded=False,
+                        )
+                        _render_retrieval(retrieval)
+                    elif event == "token":
+                        delta = data.get("delta", "")
+                        # Parse <think> tags dynamically
+                        for char in delta:
+                            collected.append(char)
+                            full = "".join(collected)
+                            # Detect state transitions
+                            if not in_thinking and "<think>" in full and "</think>" not in full:
+                                in_thinking = True
+                                thinking_collected = []
+                            if in_thinking:
+                                thinking_text = "".join(thinking_collected)
+                                # Check if we just got the closing tag
+                                if "</think>" in thinking_text + char:
+                                    in_thinking = False
+                                    thinking_collected = []
+                                else:
+                                    thinking_collected.append(char)
+                        # Show answer (without <think> tags) with cursor
+                        _, answer_so_far = _parse_thinking("".join(collected))
+                        answer_placeholder.markdown(f"### Answer\n\n{answer_so_far}▌")
+                    elif event == "done":
+                        full_answer = data.get("answer", "")
+                        thinking_text, answer_text = _parse_thinking(full_answer)
+                        if thinking_text:
+                            with st.expander("Thinking", expanded=False):
+                                st.markdown(thinking_text)
+                        answer_placeholder.markdown(f"### Answer\n\n{answer_text}")
+                        st.session_state.chat_answer = full_answer
+                        st.session_state.chat_usage = data.get("usage")
+                        _render_usage(data.get("usage"))
+                    elif event == "error":
+                        status.update(label="Answer generation failed", state="error")
+                        st.error(data.get("message", "Unknown backend error"))
+
+                if not collected:
+                    answer_placeholder.markdown("### Answer\n\n*No answer returned.*")
         except Exception as e:
             st.error(f"Query failed: {e}")
 

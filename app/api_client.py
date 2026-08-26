@@ -82,3 +82,34 @@ def stream(query: str, top_k: int = 10) -> Iterator[tuple[str, dict]]:
                 if event == "retrieval":
                     data = _absolutize_image_urls(data)
                 yield event, data
+
+
+def query_custom(
+    query: str,
+    top_k: int,
+    provider: str,
+    model: str,
+    api_key: str,
+    temperature: float = 0.0,
+    max_tokens: int = 512,
+    max_images: int = 0,
+    thinking: bool = False,
+) -> dict:
+    """Query with a custom provider/model/API key via ``/query/custom``."""
+    response = requests.post(
+        _url("/query/custom"),
+        json={
+            "query": query,
+            "top_k": top_k,
+            "provider": provider,
+            "model": model,
+            "api_key": api_key,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "max_images": max_images,
+            "thinking": thinking,
+        },
+        timeout=_REQUEST_TIMEOUT,
+    )
+    response.raise_for_status()
+    return _absolutize_image_urls(response.json())

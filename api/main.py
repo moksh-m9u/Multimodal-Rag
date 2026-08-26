@@ -23,8 +23,16 @@ from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, StreamingResponse
 
-from api.schemas import QueryRequest, QueryResponse, RetrieveRequest, RetrieveResponse
+from api.schemas import (
+    QueryRequest,
+    QueryResponse,
+    RetrieveRequest,
+    RetrieveResponse,
+    CustomQueryRequest,
+    CustomQueryResponse,
+)
 from api.service import RAGService
+from api.custom_service import run_custom_query
 from config.settings import CORS_ALLOWED_ORIGINS
 from src.retrieval.generate import answer_query_stream
 
@@ -210,7 +218,7 @@ async def retrieve(request: Request, req: RetrieveRequest) -> RetrieveResponse:
 async def query(request: Request, req: QueryRequest) -> QueryResponse:
     """Retrieve chunks and generate a full answer from the multimodal LLM."""
     try:
-        answer, base, usage = await request.app.state.service.answer(req.query, req.top_k)
+        answer, base, usage = await request.app.state.service.answer(req.query, req.top_k, req.max_images)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
     return QueryResponse(
@@ -257,6 +265,13 @@ async def query_stream(
         description="How many chunks to retrieve from the vector store.",
         examples=[10],
     ),
+    max_images: int = Query(
+        0,
+        ge=0,
+        le=50,
+        description="Max images to send to the model (0 = all).",
+        examples=[10],
+    ),
 ) -> StreamingResponse:
     """Stream an answer over SSE.
 
@@ -270,7 +285,7 @@ async def query_stream(
 
     def generate():
         try:
-            stream = answer_query_stream(retriever, query)
+            stream = answer_query_stream(retriever, query, max_images=max_images)
             chunks = stream.chunks
             base = service.to_retrieve_response(query, chunks)
             yield _sse("retrieval", base.model_dump())
@@ -328,6 +343,72 @@ async def serve_image(response_id: str, index: int, request: Request) -> Respons
         content=raw,
         media_type="image/jpeg",
         headers={"Cache-Control": "private, max-age=600"},
+    )
+
+
+# ---------------------------------------------------------------------------
+# Custom provider endpoint
+# ---------------------------------------------------------------------------
+
+@app.post(
+    "/query/custom",
+    response_model=CustomQueryResponse,
+    tags=["generation"],
+    summary="Query with custom provider/model/API key",
+    description=(
+        "Retrieve chunks and generate an answer using a user-specified LLM "
+        "provider, model, and API key.  Useful for comparing models or using "
+        "personal API keys.\n\n"
+        "The request body must include:\n"
+        "- ``provider``: one of ``gemini``, ``groq``, ``huggingface``, ``openai``\n"
+        "- ``model``: a valid model ID for that provider\n"
+        "- ``api_key``: your personal API key for the provider\n"
+        "- ``query``, ``top_k``, ``temperature``, ``max_tokens`` as usual"
+    ),
+    response_description="Retrieved chunks plus the generated answer with usage metadata",
+    openapi_extra=_request_body_examples("CustomQueryRequest", [
+        {
+            "summary": "Custom Gemini query",
+            "value": {
+                "query": "Tell me about the pin configuration of the LM2596.",
+                "top_k": 10,
+                "provider": "gemini",
+                "model": "gemini-3.5-flash-lite",
+                "api_key": "YOUR_GEMINI_API_KEY",
+                "temperature": 0.0,
+                "max_tokens": 512,
+            },
+        },
+    ]),
+)
+async def query_custom(request: Request, req: CustomQueryRequest) -> CustomQueryResponse:
+    """Retrieve chunks and generate an answer with a custom provider/model/key."""
+    try:
+        answer, base, usage = await run_custom_query(
+            query=req.query,
+            top_k=req.top_k,
+            provider_id=req.provider,
+            model_id=req.model,
+            api_key=req.api_key,
+            temperature=req.temperature,
+            max_tokens=req.max_tokens,
+            max_images=req.max_images,
+            thinking=req.thinking,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+    # Merge usage into base response
+    from api.schemas import UsageMetadata
+    usage_metadata = None
+    if usage and "error" not in usage:
+        usage_metadata = UsageMetadata(**usage)
+
+    return CustomQueryResponse(
+        **base,
+        answer=answer,
+        answer_characters=len(answer),
+        usage=usage_metadata,
     )
 
 

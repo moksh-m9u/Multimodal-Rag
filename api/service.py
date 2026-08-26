@@ -76,7 +76,7 @@ class RAGService:
         chunks = await asyncio.to_thread(retrieve_chunks, retriever, query)
         return self.to_retrieve_response(query, chunks)
 
-    async def answer(self, query: str, top_k: int) -> tuple[str, RetrieveResponse, dict]:
+    async def answer(self, query: str, top_k: int, max_images: int = 0) -> tuple[str, RetrieveResponse, dict]:
         """Retrieve chunks and generate a full answer.
 
         Uses ``answer_query_stream`` so retrieval and generation stay under a
@@ -91,7 +91,7 @@ class RAGService:
         retriever = self.get_retriever(top_k)
 
         def _run() -> tuple[str, list, dict]:
-            stream = answer_query_stream(retriever, query)
+            stream = answer_query_stream(retriever, query, max_images=max_images)
             chunks = stream.chunks
             answer = "".join(stream)
             return answer, chunks, stream.usage

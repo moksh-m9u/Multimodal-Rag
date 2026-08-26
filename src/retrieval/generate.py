@@ -21,6 +21,7 @@ from langsmith.run_helpers import set_tracing_parent
 
 from config.settings import (
     GENERATION_INPUT_PRICE_PER_1M,
+    GENERATION_MAX_TOKENS,
     GENERATION_MODEL,
     GENERATION_OUTPUT_PRICE_PER_1M,
     GENERATION_TEMPERATURE,
@@ -79,6 +80,18 @@ def _prompt_stats(message_content: list[dict]) -> tuple[int, int]:
     return len(text), images
 
 
+def _extract_text(content: Any) -> str:
+    """Extract plain text from LLM response content (string or list of parts)."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "".join(
+            part.get("text", "") if isinstance(part, dict) else str(part)
+            for part in content
+        )
+    return str(content)
+
+
 def _build_text_prompt(chunks: list[Document], query: str) -> str:
     """Build the text portion of the prompt from retrieved chunks.
 
@@ -125,11 +138,17 @@ def _build_text_prompt(chunks: list[Document], query: str) -> str:
     return "\n".join(parts)
 
 
-def _collect_images(chunks: list[Document]) -> list[dict]:
-    """Collect all base64 images from chunks into message content blocks."""
+def _collect_images(chunks: list[Document], max_images: int = 0) -> list[dict]:
+    """Collect base64 images from chunks into message content blocks.
+
+    ``max_images`` caps how many images are sent to the model.
+    0 means no limit (send all).
+    """
     image_blocks: list[dict] = []
     for chunk in chunks:
         for b64 in extract_original_data(chunk)["images_base64"]:
+            if max_images and len(image_blocks) >= max_images:
+                return image_blocks
             image_blocks.append(
                 {
                     "type": "image_url",
@@ -139,19 +158,23 @@ def _collect_images(chunks: list[Document]) -> list[dict]:
     return image_blocks
 
 
-def _build_message_content(chunks: list[Document], query: str) -> list[dict]:
-    """Build the full multimodal message content list (text + images)."""
+def _build_message_content(chunks: list[Document], query: str, max_images: int = 0) -> list[dict]:
+    """Build the full multimodal message content list (text + images).
+
+    ``max_images`` caps how many images are sent to the model (0 = all).
+    """
     content: list[dict] = [{"type": "text", "text": _build_text_prompt(chunks, query)}]
-    content.extend(_collect_images(chunks))
+    content.extend(_collect_images(chunks, max_images))
     return content
 
 
 def _create_llm() -> ChatGoogleGenerativeAI:
     """Create the Gemini LLM instance used for generation."""
-    logger.info("  Using model: %s", GENERATION_MODEL)
+    logger.info("  Using model: %s (max_tokens=%d)", GENERATION_MODEL, GENERATION_MAX_TOKENS)
     return ChatGoogleGenerativeAI(
         model=GENERATION_MODEL,
         temperature=GENERATION_TEMPERATURE,
+        max_output_tokens=GENERATION_MAX_TOKENS,
     )
 
 
@@ -198,6 +221,8 @@ def generate_answer(
         response = llm.invoke([message])
         latency_ms = round((time.perf_counter() - start) * 1000, 1)
 
+        answer_text = _extract_text(response.content)
+
         prompt_chars, prompt_images = _prompt_stats(message_content)
         usage: dict[str, Any] = {
             "model": GENERATION_MODEL,
@@ -216,7 +241,7 @@ def generate_answer(
             total_tables,
             usage,
         )
-        return GenerationResult(answer=response.content, usage=usage)
+        return GenerationResult(answer=answer_text, usage=usage)
 
     except Exception as e:
         error_msg = f"Answer generation failed: {e}"
@@ -303,7 +328,7 @@ def answer_query(retriever, query: str, run_tree=None) -> str:
 
 
 @traceable(run_type="chain", name="AnswerQuery", dangerously_allow_filesystem=True)
-def answer_query_stream(retriever, query: str, run_tree=None):
+def answer_query_stream(retriever, query: str, run_tree=None, max_images: int = 0):
     """Retrieve chunks then stream an answer under a single LangSmith trace.
 
     Yields answer tokens as they are produced.  The retrieved chunks are
@@ -313,6 +338,7 @@ def answer_query_stream(retriever, query: str, run_tree=None):
     Args:
         retriever: Vector store retriever.
         query: The user's question.
+        max_images: Max images to send to the model (0 = all).
 
     Yields:
         Answer token strings.  The wrapper's ``chunks`` and ``usage``
@@ -323,7 +349,7 @@ def answer_query_stream(retriever, query: str, run_tree=None):
 
     usage: dict[str, Any] = {}
     return _StreamWrapper(
-        generate_answer_stream(chunks, query, usage=usage),
+        generate_answer_stream(chunks, query, usage=usage, max_images=max_images),
         chunks,
         run_tree,
         usage=usage,
@@ -336,6 +362,7 @@ def generate_answer_stream(
     query: str,
     verbose: bool = False,
     usage: dict[str, Any] | None = None,
+    max_images: int = 0,
 ):
     """Generate a streaming answer using the multimodal LLM.
 
@@ -375,7 +402,7 @@ def generate_answer_stream(
                     len(od["images_base64"]),
                 )
 
-            message_content = _build_message_content(chunks, query)
+            message_content = _build_message_content(chunks, query, max_images)
             _save_prompt_debug(message_content)
 
             prompt_chars, prompt_images = _prompt_stats(message_content)
@@ -398,8 +425,9 @@ def generate_answer_stream(
             message = HumanMessage(content=message_content)
             start = time.perf_counter()
             for chunk in llm.stream([message]):
-                if chunk.content:
-                    yield chunk.content
+                token_text = _extract_text(chunk.content)
+                if token_text:
+                    yield token_text
                 _capture_usage(chunk, usage)
             usage["latency_ms"] = round((time.perf_counter() - start) * 1000, 1)
             usage["estimated_cost_usd"] = _estimate_cost(usage)
