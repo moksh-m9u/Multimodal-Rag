@@ -38,7 +38,7 @@ from src.retrieval.search import build_retriever, load_vector_store, retrieve_ch
 logger = get_logger(__name__)
 
 
-def _create_llm_for_model(provider_id: str, model_id: str, api_key: str, temperature: float = 0.0, max_tokens: int = 512):
+def _create_llm_for_model(provider_id: str, model_id: str, api_key: str, temperature: float = 0.0, max_tokens: int = 512, thinking: bool = False):
     """Create a LangChain chat model instance for the given provider/model."""
 
     if model_id.startswith("gemini") or model_id.startswith("models/gemini"):
@@ -63,12 +63,19 @@ def _create_llm_for_model(provider_id: str, model_id: str, api_key: str, tempera
             base_url = "https://router.huggingface.co/v1"
         else:
             base_url = "https://api.groq.com/openai/v1"
+
+        extra: dict = {}
+        # Groq supports reasoning_effort to control thinking natively
+        if provider_id == "groq":
+            extra["reasoning_effort"] = "default" if thinking else "none"
+
         return ChatOpenAI(
             model=model_id,
             temperature=temperature,
             max_tokens=max_tokens,
             api_key=api_key,
             base_url=base_url,
+            model_kwargs=extra,
         )
 
 
@@ -139,7 +146,7 @@ def generate_answer_stream(
                 # Prepend thinking instruction to the text prompt
                 thinking_instruction = (
                     "\n\nBefore answering, show your reasoning step-by-step "
-                    "wrapped in <think> and </think> tags. "
+                    "wrapped in <think> and <think> tags. "
                     "Then provide your final answer after the </think> tag."
                 )
                 message_content[0]["text"] += thinking_instruction
@@ -237,7 +244,7 @@ async def run_custom_query(
         raise ValueError(f"Model {model_id} not found for provider {provider_id}")
 
     # Create LLM
-    llm = _create_llm_for_model(provider_id, model_id, api_key, temperature, max_tokens)
+    llm = _create_llm_for_model(provider_id, model_id, api_key, temperature, max_tokens, thinking)
 
     # Run stream
     def _run() -> tuple[str, list, dict]:

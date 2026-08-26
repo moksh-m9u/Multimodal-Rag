@@ -143,3 +143,5 @@ The LM317 is designed to minimize the lapjyst current and make this current cons
 
 
 The images above are figures from the document. Use the summaries, tables, and images together to provide a detailed answer.
+
+Before answering, show your reasoning step-by-step wrapped in <think> and <think> tags. Then provide your final answer after the </think> tag.
