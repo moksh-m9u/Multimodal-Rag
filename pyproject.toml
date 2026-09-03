@@ -26,3 +26,8 @@ dependencies = [
 [tool.setuptools.packages.find]
 where = ["src", "config", "scripts"]
 include = ["src.*", "config.*", "scripts.*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-q"

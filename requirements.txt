@@ -15,3 +15,6 @@ Pillow>=10.0
 plotly>=5.18
 opencv-python-headless==5.0.0.93
 langsmith
+
+# Development / testing
+pytest>=8.0
