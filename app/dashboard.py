@@ -841,12 +841,8 @@ def render_sidebar() -> None:
                 key="json_selectbox",
             )
             if selected_file:
-                json_path = Path(__file__).resolve().parent.parent / "json" / selected_file
                 if selected_file != st.session_state.get("file_name"):
-                    st.session_state.data = load_json_from_path(str(json_path))
-                    st.session_state.file_name = selected_file
-                    st.session_state.filtered_indices = None
-                    st.session_state.selected_chunk_id = None
+                    load_dataset(selected_file, sync_sidebar=False)
                     st.rerun()
 
         st.divider()
@@ -1903,6 +1899,63 @@ def _render_gallery() -> None:
             st.image(path, caption=label, width="stretch")
 
 
+PAGE_PURPOSE: dict[str, str] = {
+    "Chunk Explorer": (
+        "Dataset-wide metrics, then open any chunk on its own: raw OCR text, the "
+        "AI-generated summary, decoded images, parsed tables, full metadata and a "
+        "0-100 health score. Filter by search text, images, tables, raw text, "
+        "enhanced content or chunk ID."
+    ),
+    "Compare Chunks": (
+        "Put any two chunks side by side &mdash; useful to see how one visual region "
+        "got summarised, and how a multimodal chunk differs from a text-only one."
+    ),
+    "Dataset Analytics": (
+        "Corpus-level view: distributions of images, tables, raw length and enhanced "
+        "length per chunk, plus top-20 lists for the largest and most multimodal chunks."
+    ),
+}
+
+
+def load_dataset(filename: str, sync_sidebar: bool = True) -> None:
+    """Load a chunk-export JSON from the bundled ``json/`` directory."""
+    path = Path(__file__).resolve().parent.parent / "json" / filename
+    st.session_state.data = load_json_from_path(str(path))
+    st.session_state.file_name = filename
+    st.session_state.filtered_indices = None
+    st.session_state.selected_chunk_id = None
+    if sync_sidebar:
+        # Applied on the next run, before the sidebar selectbox is created, so
+        # the sidebar stays in sync with what was loaded from a page button.
+        st.session_state.pending_file = filename
+
+
+def render_no_dataset(page: str) -> None:
+    """Empty state shown when a data page is opened without a datasheet."""
+    st.header(page)
+    st.markdown(PAGE_PURPOSE.get(page, ""))
+
+    files = list_json_files()
+    if files:
+        st.markdown("#### Select a datasheet")
+        cols = st.columns(len(files))
+        for col, filename in zip(cols, files):
+            if col.button(
+                _dataset_display_name(filename),
+                width="stretch",
+                key=f"load_{filename}",
+            ):
+                load_dataset(filename)
+                st.rerun()
+    else:
+        st.info("No bundled datasheets were found in the `json/` directory.")
+
+    st.caption(
+        "You can also pick a datasheet, or upload your own chunk-export JSON, "
+        "from the sidebar."
+    )
+
+
 def render_landing_page() -> None:
     """Project walkthrough shown until a datasheet is selected."""
     _render_hero()
@@ -2020,13 +2073,11 @@ def main() -> None:
 
     st.title(PAGE_TITLE)
     init_state()
-    render_sidebar()
-
-    data = st.session_state.data
 
     page = st.sidebar.radio(
         "Navigation",
         [
+            "Home",
             "Chunk Explorer",
             "Compare Chunks",
             "Dataset Analytics",
@@ -2035,6 +2086,15 @@ def main() -> None:
         label_visibility="collapsed",
     )
 
+    # A dataset loaded from a page button is reflected in the sidebar picker.
+    pending = st.session_state.pop("pending_file", None)
+    if pending:
+        st.session_state["json_selectbox"] = pending
+
+    render_sidebar()
+
+    data = st.session_state.data
+
     st.sidebar.divider()
     if st.session_state.file_name:
         st.sidebar.caption(
@@ -2042,10 +2102,12 @@ def main() -> None:
             f"-  Chunks: {len(data)}"
         )
 
-    if page == "Query & Retrieve":
+    if page == "Home":
+        render_landing_page()
+    elif page == "Query & Retrieve":
         render_chat_page()
     elif data is None:
-        render_landing_page()
+        render_no_dataset(page)
     elif page == "Chunk Explorer":
         page_explorer(data)
     elif page == "Compare Chunks":
