@@ -52,6 +52,589 @@ logger = get_logger(__name__)
 PAGE_TITLE = "Multimodal RAG Chunk Inspector"
 LAYOUT = "wide"
 
+# ---------------------------------------------------------------------------
+# Landing page content
+# ---------------------------------------------------------------------------
+# Shown instead of the "upload a JSON" placeholder whenever no datasheet has
+# been selected, so a first-time visitor lands on an explanation of the project
+# rather than on an empty screen.
+
+GITHUB_URL = "https://github.com/moksh-m9u/Multimodal-Rag"
+LIVE_APP_URL = "https://multimodal-rag-complex.streamlit.app/"
+EVAL_DASHBOARD_URL = (
+    "https://multimodal-rag-iquyr6mkijuujmcr8cmikc.streamlit.app/"
+)
+
+PROJECT_LINKS: list[tuple[str, str]] = [
+    ("GitHub", GITHUB_URL),
+    ("Live App", LIVE_APP_URL),
+    ("Evaluation Dashboard", EVAL_DASHBOARD_URL),
+    ("API Reference", f"{GITHUB_URL}/blob/main/API.md"),
+    ("LangSmith", "https://smith.langchain.com/"),
+]
+
+CORE_STACK: list[str] = [
+    "Python",
+    "FastAPI",
+    "Streamlit",
+    "LangChain",
+    "LangSmith",
+    "LLMOps",
+    "ChromaDB",
+    "Tesseract OCR",
+    "GLM-4.5V",
+    "Gemini",
+    "Hugging Face",
+]
+
+SUPPORT_STACK: list[str] = [
+    "unstructured",
+    "Granite Embeddings",
+    "MMR Retrieval",
+    "Pandas",
+    "Plotly",
+    "SSE Streaming",
+    "Docker",
+    "pytest",
+]
+
+# (step, title, body, tags)
+PIPELINE_STEPS: list[tuple[str, str, str, list[str]]] = [
+    (
+        "Step 01",
+        "Multimodal ingestion of electronic datasheets",
+        "Datasheets hide their answers inside pictures: pinout diagrams, application "
+        "circuits, characteristic curves, timing waveforms, package drawings. "
+        "<code>partition_pdf(strategy=\"hi_res\")</code> splits every datasheet into typed "
+        "elements — narrative text, structured HTML tables and base64 image blocks — while "
+        "preserving page numbers and reading order so each figure stays associated with the "
+        "section that explains it.",
+        ["PDF in", "unstructured", "hi_res strategy", "OCR"],
+    ),
+    (
+        "Step 02",
+        "OCR + vision-LLM enhanced representations",
+        "Tesseract OCR recovers text that physically lives inside images — pin labels, axis "
+        "values, curve annotations. Then <b>GLM-4.5V</b>, a vision language model, writes a "
+        "multimodal summary of every image- and table-rich chunk. That summary becomes "
+        "<code>enhanced_content</code>: a text-only retrieval handle for knowledge that was "
+        "originally visual, so a figure can now be found by asking about it.",
+        ["Tesseract OCR", "GLM-4.5V", "enhanced_content", "+1024 tok"],
+    ),
+    (
+        "Step 03",
+        "Vector storage and diversity-aware retrieval",
+        "Each chunk — enhanced content, raw text, tables and images — is embedded with "
+        "Granite embeddings and persisted to <b>ChromaDB</b> using cosine similarity over HNSW. "
+        "Retrieval uses <b>MMR</b> (top-10 answers from a 20-chunk candidate pool) so results "
+        "are relevant <i>and</i> diverse instead of ten near-duplicate paragraphs. The same "
+        "chunks are exported to JSON, which is what powers the inspector pages.",
+        ["Granite embeddings", "ChromaDB", "cosine HNSW", "MMR k=10 / fetch_k=20"],
+    ),
+    (
+        "Step 04",
+        "Chunk Inspector &amp; Dataset Analytics",
+        "A granular inspection dashboard where every chunk is opened independently: raw OCR "
+        "text, AI-generated summary, decoded images, parsed tables, full metadata and "
+        "cross-modal associations. Each chunk gets a 0–100 <b>health score</b> from content "
+        "completeness, so weak chunks can be found before they hurt a query. Dataset Analytics "
+        "adds distributions and top-20 lists over the whole corpus.",
+        ["0–100 health score", "per-chunk drill-down", "histograms", "top-20 lists"],
+    ),
+    (
+        "Step 05",
+        "Grounded multimodal query &amp; retrieve",
+        "The <b>FastAPI</b> backend runs embed → search → context assembly → generation. The "
+        "top-10 relevant chunks are passed to the generation model together with their actual "
+        "images and tables, not as flattened text, so answers can describe a pinout or read a "
+        "curve. Answers stream back over SSE, with token usage, latency and estimated cost. "
+        "Any provider and model can be selected in the sidebar with <b>Bring Your Own API Key</b>.",
+        ["Top-10 chunks", "BYO API key", "Gemini / Groq / OpenAI / HF", "thinking mode"],
+    ),
+    (
+        "Step 06",
+        "LangSmith observability &amp; LLMOps",
+        "End-to-end tracing covers embedding, retrieval, multimodal context assembly and "
+        "generation. Every run is inspectable in LangSmith: the chunks that were retrieved, the "
+        "model calls made, inputs and outputs, latency, token usage and the full execution flow — "
+        "so a bad answer can be traced back to the exact stage that caused it.",
+        ["end-to-end traces", "latency", "token usage", "inputs / outputs"],
+    ),
+    (
+        "Step 07",
+        "LLM-as-a-Judge evaluation framework",
+        "A judge model scores both halves of the system: retrieval (relevance, coverage, "
+        "ranking, redundancy, noise) and generation (correctness, faithfulness, completeness, "
+        "conciseness, image utilisation). Across <b>13 curated datasheet questions</b> the "
+        "system reaches an <b>89.8/100</b> average overall score with a <b>92% pass rate</b>, "
+        "backed by a live evaluation dashboard with score distribution and failure analysis.",
+        ["89.8 / 100 avg", "92% pass rate", "13 cases", "failure analysis"],
+    ),
+]
+
+EVAL_METRICS: list[tuple[str, str, str]] = [
+    ("89.8", "Avg overall judge score", "of 100 across 13 evaluation cases"),
+    ("92%", "Pass rate", "12 of 13 cases graded Pass"),
+    ("87.0", "Avg retrieval score", "relevance, coverage, ranking, redundancy, noise"),
+    ("93.3", "Avg generation score", "correctness, faithfulness, completeness, conciseness"),
+]
+
+DATASET_LABELS: dict[str, str] = {
+    "AN699chunks.json": "AN699",
+    "LM555TImer.json": "LM555 Timer",
+    "lm2596chunks.json": "LM2596",
+    "lm317chunks.json": "LM317",
+    "tlv1117.pdfchunks_export.json": "TLV1117",
+}
+
+
+def _dataset_display_name(filename: str) -> str:
+    """Human-friendly label for a chunk export file."""
+    if filename in DATASET_LABELS:
+        return DATASET_LABELS[filename]
+    stem = Path(filename).stem
+    for suffix in ("chunks_export", "chunks", "export"):
+        if stem.endswith(suffix):
+            stem = stem[: -len(suffix)]
+    return (stem.strip("._-") or stem).upper()
+
+
+def _asset(name: str) -> str:
+    return str(Path(__file__).resolve().parent.parent / "assets" / name)
+
+
+# Shown when a node in the architecture diagram is clicked.
+MERMAID_NODE_NOTES: dict[str, str] = {
+    "PDF": "The source electronic datasheet dropped into the pipeline.",
+    "PART": "<code>unstructured.partition_pdf(strategy=\"hi_res\")</code> walks the "
+    "PDF and returns typed elements instead of one flat string.",
+    "TEXT": "Narrative text, including text recovered by OCR from scanned regions.",
+    "TABLES": "Electrical-characteristics and recommended-operating tables, kept as "
+    "HTML so column headers survive.",
+    "IMAGES": "Figures, schematics, pinout diagrams and characteristic curves, kept "
+    "as base64 so they can travel with the chunk.",
+    "CHUNK": "<code>chunk_by_title</code> groups elements into semantic chunks of at "
+    "most 3000 characters.",
+    "SEP": "Splits each chunk by content type so text, tables and images can be "
+    "handled by the right model.",
+    "OCR": "Tesseract OCR reads the text printed inside images: pin labels, axis "
+    "values, curve annotations.",
+    "VLM": "<b>GLM-4.5V</b> reads the visual content and writes a summary, turning a "
+    "figure into something searchable.",
+    "ENH": "<code>enhanced_content</code>: the text-only retrieval handle for "
+    "knowledge that was originally visual.",
+    "CHROMA": "Every chunk is embedded with Granite and persisted with cosine "
+    "similarity over HNSW.",
+    "JSONF": "The same chunks exported as JSON &mdash; this is what the Chunk "
+    "Inspector and Dataset Analytics read.",
+    "EMB": "The query is embedded with the same Granite model used at ingestion.",
+    "MMR": "Maximal Marginal Relevance picks 10 chunks from a 20-chunk candidate "
+    "pool, balancing relevance against redundancy.",
+    "PROMPT": "The retrieved chunks are assembled into one multimodal context: text, "
+    "tables and the real images.",
+    "LLM": "Any configured provider and model, with a bring-your-own API key.",
+    "ANSWER": "A grounded answer that cites the chunks it was built from.",
+    "EXPLORE": "Open any chunk and inspect raw text, AI summary, images, tables and "
+    "metadata, with a 0-100 health score.",
+    "ANALYTICS": "Corpus-level distributions and top-20 lists over every chunk.",
+    "CHAT": "Ask a question, watch retrieval and the streamed answer, then read the "
+    "token, latency and cost stats.",
+    "TRACE": "LangSmith traces every embedding, retrieval, context-assembly and "
+    "generation call end to end.",
+    "EVAL": "A judge model scores retrieval and generation, surfacing failures with "
+    "a root cause.",
+}
+
+
+# Full-system architecture, rendered client-side with mermaid.js inside a
+# sandboxed iframe.  Kept as data (not a .md file) so the landing page and the
+# README always describe the same pipeline.
+MERMAID_DIAGRAM = """
+flowchart LR
+    subgraph Input["PDF Datasheet"]
+        PDF[("datasheet.pdf")]
+    end
+
+    subgraph EX["1 - Extraction"]
+        direction TB
+        PART["unstructured partition_pdf<br/>strategy = hi_res"]
+        TEXT["raw_text : str"]
+        TABLES["tables_html : list[str]"]
+        IMAGES["images_base64 : list[str]"]
+    end
+
+    subgraph CH["2 - Chunking"]
+        CHUNK["chunk_by_title<br/>max_chars = 3000"]
+    end
+
+    subgraph EN["3 - Enrichment"]
+        SEP["separate_content_types"]
+        OCR["Tesseract OCR<br/>text inside images"]
+        VLM["GLM-4.5V vision LLM"]
+        ENH["enhanced_content : str"]
+    end
+
+    subgraph ST["4 - Storage"]
+        CHROMA[("ChromaDB<br/>cosine similarity")]
+        JSONF[("chunks_huggingface.json")]
+    end
+
+    subgraph RE["5 - Retrieval"]
+        EMB["Granite embeddings"]
+        MMR["MMR retriever<br/>k = 10, fetch_k = 20"]
+    end
+
+    subgraph GE["6 - Generation"]
+        PROMPT["Multimodal prompt<br/>text + tables + images"]
+        LLM["Gemini / any provider<br/>BYO API key"]
+        ANSWER["Grounded answer"]
+    end
+
+    subgraph UI["7 - Apps and LLMOps"]
+        EXPLORE["Chunk Inspector"]
+        ANALYTICS["Dataset Analytics"]
+        CHAT["Query & Retrieve"]
+        TRACE["LangSmith traces"]
+        EVAL["LLM-as-a-Judge evals"]
+    end
+
+    PDF --> PART
+    PART --> TEXT
+    PART --> TABLES
+    PART --> IMAGES
+    PART --> CHUNK
+    CHUNK --> SEP
+    TEXT --> SEP
+    TABLES --> SEP
+    IMAGES --> SEP
+    SEP --> OCR
+    OCR --> VLM
+    VLM --> ENH
+    ENH --> CHROMA
+    ENH --> JSONF
+    CHROMA --> EMB
+    EMB --> MMR
+    MMR --> PROMPT
+    PROMPT --> LLM
+    LLM --> ANSWER
+    JSONF --> EXPLORE
+    JSONF --> ANALYTICS
+    CHROMA --> CHAT
+    CHAT --> ANSWER
+    MMR -. traced .-> TRACE
+    LLM -. traced .-> TRACE
+    CHAT -. traced .-> TRACE
+    ANSWER --> EVAL
+    EXPLORE --> EVAL
+
+    classDef ingest fill:#1a73e8,color:#fff,stroke:#0b4fa8
+    classDef chunk fill:#ea4335,color:#fff,stroke:#a8231a
+    classDef enrich fill:#fbbc04,color:#000,stroke:#a07c00
+    classDef store fill:#34a853,color:#fff,stroke:#1d6b32
+    classDef retrieve fill:#673ab7,color:#fff,stroke:#3f1d80
+    classDef ui fill:#ff6d01,color:#fff,stroke:#b34d00
+    class PDF,PART,TEXT,TABLES,IMAGES ingest
+    class CHUNK chunk
+    class SEP,OCR,VLM,ENH enrich
+    class CHROMA,JSONF store
+    class EMB,MMR,PROMPT,LLM,ANSWER retrieve
+    class EXPLORE,ANALYTICS,CHAT,TRACE,EVAL ui
+"""
+
+
+_MERMAID_VIEWER = """<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
+<style>
+  :root {
+    --bg: #ffffff; --panel: #f7f8fa; --fg: #1c1c1c; --muted: #6b7280;
+    --line: #e3e6ec; --accent: #ff4b4b;
+  }
+  html.dark {
+    --bg: #0e1117; --panel: #171c26; --fg: #e8eaed; --muted: #98a2b3;
+    --line: #272d38; --accent: #ff6b6b;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: transparent; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  #bar { display: flex; align-items: center; gap: 6px; padding: 2px 0 8px 0; }
+  #bar button {
+    font: inherit; font-size: 12px; font-weight: 600; line-height: 1;
+    color: var(--fg); background: var(--panel); cursor: pointer;
+    border: 1px solid var(--line); border-radius: 7px; padding: 6px 10px;
+  }
+  #bar button:hover { border-color: var(--accent); color: var(--accent); }
+  #hint { margin-left: 4px; font-size: 11px; color: var(--muted); }
+  #zoom {
+    margin-left: auto; font-size: 11px; color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+  #viewport {
+    position: relative; height: 660px; overflow: hidden; cursor: grab;
+    background: var(--bg); border: 1px solid var(--line); border-radius: 12px;
+  }
+  #viewport.dragging { cursor: grabbing; }
+  #canvas {
+    position: absolute; top: 0; left: 0; width: max-content;
+    transform-origin: 0 0;
+  }
+  /* Mermaid lays the graph out against the width of this element.  Left to
+     shrink-to-fit it collapses, every label wraps one word per line and the
+     drawing comes out thousands of pixels tall, so give it a real canvas;
+     the script below then matches it to the frame. */
+  #canvas .mermaid { display: block; width: 1150px; }
+  #canvas svg { max-width: none !important; height: auto !important; }
+  #canvas g.node { cursor: pointer; }
+  #canvas g.mmr-sel > rect, #canvas g.mmr-sel > polygon,
+  #canvas g.mmr-sel > circle, #canvas g.mmr-sel > path {
+    stroke: var(--accent) !important; stroke-width: 3px !important;
+  }
+  #note {
+    position: absolute; left: 12px; right: 12px; bottom: 12px; display: none;
+    padding: 10px 12px; border-radius: 10px; font-size: 12px; line-height: 1.55;
+    color: var(--fg); background: var(--panel); border: 1px solid var(--line);
+    box-shadow: 0 6px 20px rgba(0,0,0,.18);
+  }
+  #note.on { display: block; cursor: pointer; }
+  #note b { color: var(--accent); }
+  #note code { font-size: 11px; }
+</style>
+</head>
+<body>
+<div id="bar">
+  <button id="zoomOut" title="Zoom out">&minus;</button>
+  <button id="zoomIn" title="Zoom in">+</button>
+  <button id="fit" title="Fit the whole diagram">Fit</button>
+  <button id="actual" title="Render at 100%">1:1</button>
+  <span id="hint">drag to pan &middot; double-click to fit &middot; click a node</span>
+  <span id="zoom">100%</span>
+</div>
+<div id="viewport">
+  <div id="canvas"><div class="mermaid">
+__DIAGRAM__
+  </div></div>
+  <div id="note"></div>
+</div>
+<script>
+(function () {
+  var NOTES = __NOTES__;
+  var vp = document.getElementById("viewport");
+  var canvas = document.getElementById("canvas");
+  var zoomLabel = document.getElementById("zoom");
+  var note = document.getElementById("note");
+  var svg = null, scale = 1, tx = 0, ty = 0, moved = false;
+  var nat = { w: 0, h: 0 };
+  var MIN = 0.05, MAX = 8;
+
+  function isDark() {
+    try {
+      var w = window.parent, d = w.document;
+      var els = [
+        d.querySelector('[data-testid="stAppViewContainer"]'),
+        d.querySelector(".stApp"),
+        d.body,
+        d.documentElement
+      ];
+      for (var i = 0; i < els.length; i++) {
+        if (!els[i]) continue;
+        var c = w.getComputedStyle(els[i]).backgroundColor || "";
+        var m = c.match(/rgba?\\((\\d+),\\s*(\\d+),\\s*(\\d+)(?:,\\s*([\\d.]+))?\\)/);
+        if (!m) continue;
+        if (m[4] !== undefined && parseFloat(m[4]) === 0) continue;
+        return (0.299 * m[1] + 0.587 * m[2] + 0.114 * m[3]) < 128;
+      }
+    } catch (e) { /* parent not reachable: assume the light theme */ }
+    return false;
+  }
+
+  var dark = isDark();
+  if (dark) document.documentElement.classList.add("dark");
+
+  function apply() {
+    canvas.style.transform =
+      "translate(" + tx + "px," + ty + "px) scale(" + scale + ")";
+    zoomLabel.textContent = Math.round(scale * 100) + "%";
+  }
+
+  function natural() {
+    return nat;
+  }
+
+  /* Pin the SVG to its intrinsic pixel size.  Mermaid emits width="100%" plus a
+     max-width style, which resolves against the container and can collapse the
+     drawing; forcing the viewBox size makes the scale factor predictable. */
+  function measure() {
+    if (!svg) return { w: 0, h: 0 };
+    var vb = svg.viewBox && svg.viewBox.baseVal;
+    var w = vb && vb.width, h = vb && vb.height;
+    if (!w || !h) {
+      var r = svg.getBoundingClientRect();
+      w = r.width / scale;
+      h = r.height / scale;
+    }
+    if (w > 0 && h > 0) {
+      svg.removeAttribute("width");
+      svg.removeAttribute("height");
+      svg.style.width = w + "px";
+      svg.style.height = h + "px";
+    }
+    nat = { w: w, h: h };
+    return nat;
+  }
+
+  function center(s) {
+    var r = vp.getBoundingClientRect();
+    var n = natural();
+    tx = (r.width - n.w * s) / 2;
+    ty = (r.height - n.h * s) / 2;
+    scale = s;
+    apply();
+  }
+
+  function fit() {
+    var r = vp.getBoundingClientRect();
+    var n = natural();
+    if (!n.w || !n.h) return;
+    center(Math.min((r.width - 24) / n.w, (r.height - 24) / n.h, MAX));
+  }
+
+  function zoomBy(factor) {
+    var next = Math.min(MAX, Math.max(MIN, scale * factor));
+    var r = vp.getBoundingClientRect();
+    var cx = r.width / 2, cy = r.height / 2;
+    tx = cx - (cx - tx) * (next / scale);
+    ty = cy - (cy - ty) * (next / scale);
+    scale = next;
+    apply();
+  }
+
+  function select(g) {
+    var prev = canvas.querySelector("g.mmr-sel");
+    if (prev) prev.classList.remove("mmr-sel");
+    if (!g) { note.classList.remove("on"); return; }
+    g.classList.add("mmr-sel");
+    var id = (g.id || "").split("-")[1] || "";
+    var text = NOTES[id];
+    if (!text) { note.classList.remove("on"); return; }
+    note.innerHTML = "<b>" + id + "</b> &mdash; " + text;
+    note.classList.add("on");
+  }
+
+  function bind() {
+    document.getElementById("zoomIn").onclick = function () { zoomBy(1.25); };
+    document.getElementById("zoomOut").onclick = function () { zoomBy(0.8); };
+    document.getElementById("fit").onclick = fit;
+    document.getElementById("actual").onclick = function () { center(1); };
+    note.onclick = function () { select(null); };
+
+    var drag = false, sx = 0, sy = 0, ox = 0, oy = 0;
+    vp.addEventListener("pointerdown", function (e) {
+      drag = true; moved = false;
+      sx = e.clientX; sy = e.clientY; ox = tx; oy = ty;
+      vp.classList.add("dragging");
+      try { vp.setPointerCapture(e.pointerId); } catch (err) {}
+    });
+    vp.addEventListener("pointermove", function (e) {
+      if (!drag) return;
+      var dx = e.clientX - sx, dy = e.clientY - sy;
+      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) moved = true;
+      tx = ox + dx; ty = oy + dy;
+      apply();
+    });
+    ["pointerup", "pointercancel", "pointerleave"].forEach(function (ev) {
+      vp.addEventListener(ev, function () {
+        drag = false; vp.classList.remove("dragging");
+      });
+    });
+    vp.addEventListener("dblclick", fit);
+
+    Array.prototype.forEach.call(canvas.querySelectorAll("g.node"), function (g) {
+      g.addEventListener("click", function () { if (!moved) select(g); });
+    });
+    window.addEventListener("resize", fit);
+  }
+
+  function start() {
+    svg = canvas.querySelector("svg");
+    bind();
+
+    /* Mermaid finishes measuring labels asynchronously, so the intrinsic size
+       can change a frame or two later.  Re-measure, then open framed. */
+    function place() {
+      measure();
+      fit();
+    }
+    requestAnimationFrame(place);
+    setTimeout(place, 120);
+  }
+
+  if (window.mermaid) {
+    /* Draw the graph at the width of the frame so the intrinsic size of the
+       diagram matches the space available, instead of sprawling into a strip
+       that then has to be shrunk. */
+    var box = document.querySelector(".mermaid");
+    if (box) {
+      var avail = vp.getBoundingClientRect().width;
+      if (avail > 320) box.style.width = avail + "px";
+    }
+
+    window.mermaid.initialize({
+      startOnLoad: false,
+      securityLevel: "loose",
+      theme: "base",
+      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+      themeVariables: dark ? {
+        fontSize: "15px",
+        background: "#0e1117",
+        primaryColor: "#1b2130",
+        primaryTextColor: "#e8eaed",
+        lineColor: "#7d8797",
+        clusterBkg: "#151a24",
+        clusterBorder: "#2a3140",
+        edgeLabelBackground: "#0e1117"
+      } : {
+        fontSize: "15px",
+        background: "#ffffff",
+        primaryColor: "#f4f6f9",
+        primaryTextColor: "#1c1c1c",
+        lineColor: "#8a94a6",
+        clusterBkg: "#fbfcfd",
+        clusterBorder: "#dfe4ec",
+        edgeLabelBackground: "#ffffff"
+      },
+      flowchart: {
+        htmlLabels: true, curve: "basis", nodeSpacing: 34, rankSpacing: 46
+      }
+    });
+    window.mermaid.run({ querySelector: ".mermaid" })
+      .then(start)
+      .catch(function () { start(); });
+  }
+})();
+</script>
+</body>
+</html>
+"""
+
+
+def _mermaid_iframe(diagram: str) -> str:
+    """Build the interactive mermaid viewer document.
+
+    The SVG is rendered at its natural size and scaled with a CSS transform
+    inside a fixed viewport, so the diagram fills the frame instead of being
+    shrunk by ``max-width``.  Zoom, fit, drag-to-pan and clickable nodes are all
+    handled in the iframe; the theme is inherited from the Streamlit app.
+    """
+    return (
+        _MERMAID_VIEWER.replace("__DIAGRAM__", diagram.strip()).replace(
+            "__NOTES__", json.dumps(MERMAID_NODE_NOTES)
+        )
+    )
+
 
 def log_tracing_status() -> None:
     """Log whether LangSmith tracing is enabled in this runtime.
@@ -1125,6 +1708,234 @@ def render_chat_page() -> None:
     _render_usage(st.session_state.get("chat_usage"))
 
 
+# ---------------------------------------------------------------------------
+# Landing page -- full project walkthrough, shown when no datasheet is loaded
+# ---------------------------------------------------------------------------
+def _render_hero() -> None:
+    buttons = "".join(
+        f'<a class="mmr-btn" href="{url}" target="_blank" rel="noopener">'
+        f"{label} &#8599;</a>"
+        for label, url in PROJECT_LINKS
+    )
+    badges = "".join(
+        f'<span class="mmr-badge">{tech}</span>' for tech in CORE_STACK
+    )
+
+    st.markdown(
+        f"""
+        <div class="mmr-hero">
+          <h2>Multimodal RAG AI Pipeline for Electronic Datasheets</h2>
+          <p>A production pipeline that reads datasheets the way an engineer does:
+          narrative text, tables, figures, schematics, pinout diagrams and the
+          relationships between them &mdash; then answers questions grounded in
+          the exact chunks and images that support them.</p>
+          <div class="mmr-actions">{buttons}</div>
+          <div class="mmr-badges">{badges}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def _render_problem() -> None:
+    st.markdown("## The problem with text-only RAG on datasheets")
+    st.markdown(
+        """
+A datasheet rarely states its most important facts in sentences. The answer
+lives in the visuals: pin assignments drawn on a package outline, absolute
+maximum ratings inside a table, gain and dropout curves, switching waveforms,
+typical application circuits. A text-only pipeline retrieves the paragraph
+*near* the figure and calls it a day, so the model confidently answers the wrong
+part &mdash; or nothing at all.
+
+This project treats every modality as first-class: extraction, enrichment,
+storage, retrieval and generation all carry text, tables **and** images together.
+"""
+    )
+
+
+def _html_grid(fragments: list[str], css_class: str) -> str:
+    """Join HTML fragments into one raw-HTML block safe for markdown.
+
+    Fragments are stripped before joining: markdown ends a raw HTML block on the
+    first blank line, and a whitespace-only line counts as blank.  Leaving the
+    indentation that trails each triple-quoted fragment in place would escape
+    every card after the first one into visible markup.
+    """
+    body = "".join(f.strip() for f in fragments)
+    return f'<div class="{css_class}">{body}</div>'
+
+
+def _render_pipeline_steps() -> None:
+    st.markdown("## What we built &mdash; step by step")
+
+    cards = []
+    for step, title, body, tags in PIPELINE_STEPS:
+        tag_html = "".join(f'<span class="mmr-tag">{t}</span>' for t in tags)
+        cards.append(
+            f"""<div class="mmr-card">
+  <div class="mmr-step">{step}</div>
+  <h4>{title}</h4>
+  <p>{body}</p>
+  <div class="mmr-tags">{tag_html}</div>
+</div>"""
+        )
+
+    st.markdown(_html_grid(cards, "mmr-grid"), unsafe_allow_html=True)
+
+
+def _render_results() -> None:
+    st.markdown("## Evaluation results")
+    st.markdown(
+        f"""
+The [LLM-as-a-Judge framework]({EVAL_DASHBOARD_URL}) grades retrieval and
+generation separately across **13 curated datasheet questions**. Headline
+numbers from the live run:
+"""
+    )
+
+    cells = []
+    for value, label, hint in EVAL_METRICS:
+        cells.append(
+            f"""<div class="mmr-metric">
+  <div class="v">{value}</div>
+  <div class="l">{label}</div>
+  <div class="h">{hint}</div>
+</div>"""
+        )
+
+    st.markdown(_html_grid(cells, "mmr-metrics"), unsafe_allow_html=True)
+    st.caption(
+        "Open the Evaluation Dashboard for the per-question score distribution, "
+        "the retrieval-vs-generation comparison and the failure analysis that "
+        "explains every non-pass case."
+    )
+
+
+def _render_architecture() -> None:
+    st.markdown("## Architecture")
+    st.markdown(
+        "End-to-end multimodal data flow &mdash; PDF in, grounded answer out, "
+        "with every stage traced."
+    )
+
+    diagram_html = _mermaid_iframe(MERMAID_DIAGRAM)
+    if hasattr(st, "iframe"):
+        st.iframe(diagram_html, height=710)
+    else:  # Streamlit < 1.45, where st.iframe does not exist yet
+        import streamlit.components.v1 as components
+
+        components.html(diagram_html, height=710)
+
+    with st.expander("Mermaid source"):
+        st.code(MERMAID_DIAGRAM.strip(), language="mermaid")
+
+
+def _render_how_to_explore() -> None:
+    st.markdown("## How to explore this project")
+    st.markdown(
+        "Pick a datasheet in the **sidebar** (or upload your own chunk-export JSON) "
+        "and every page below becomes live."
+    )
+
+    steps = [
+        (
+            "Select a datasheet",
+            "Sidebar &rarr; *Select a datasheet*. Five datasets ship with the repo: "
+            + ", ".join(f"**{_dataset_display_name(f)}**" for f in list_json_files())
+            + ". The sidebar then reports total chunks and unlocks the filters.",
+        ),
+        (
+            "Chunk Explorer",
+            "Dataset-wide metrics, then filter by search text, images, tables, raw "
+            "text, enhanced content or chunk ID. Click any row to open that chunk's "
+            "health score, AI summary, raw OCR text, decoded images, parsed tables "
+            "and full metadata.",
+        ),
+        (
+            "Compare Chunks",
+            "Put any two chunks side by side &mdash; useful to see how one visual "
+            "region got summarised and how it differs from a text-only chunk.",
+        ),
+        (
+            "Dataset Analytics",
+            "Distributions of images, tables, raw length and enhanced length, plus "
+            "top-20 lists for largest chunks and most multimodal chunks.",
+        ),
+        (
+            "Query &amp; Retrieve",
+            "Ask a question and watch the backend retrieve the top-10 chunks and "
+            "stream a grounded answer. Expand any retrieved chunk to see the exact "
+            "text, tables and images the model was given, then check token usage, "
+            "latency and estimated cost. Choose any provider, model or Thinking Mode "
+            "in the sidebar &mdash; or enable <i>Use Custom Provider</i> and bring "
+            "your own API key.",
+        ),
+        (
+            "Evaluation Dashboard",
+            f"The judge results live in a [separate deployment]({EVAL_DASHBOARD_URL}): "
+            "per-question scores, retrieval vs generation breakdown, metric averages "
+            "and root-cause diagnosis for failures.",
+        ),
+    ]
+
+    st.markdown(
+        "\n\n".join(
+            f"{i}. **{title}** &mdash; {body}"
+            for i, (title, body) in enumerate(steps, 1)
+        )
+    )
+
+
+def _render_gallery() -> None:
+    shots = [
+        ("Chunk Explorer", "dashboard-chunk-explorer.png"),
+        ("Query & Retrieve", "dashboard-query.png"),
+        ("Dataset Analytics", "dashboard-analytics.png"),
+        ("Compare Chunks", "dashboard-compare.png"),
+    ]
+    available = [(label, _asset(f)) for label, f in shots if Path(_asset(f)).exists()]
+    if not available:
+        return
+
+    with st.expander("Screenshots &mdash; the app in action"):
+        for label, path in available:
+            st.image(path, caption=label, width="stretch")
+
+
+def render_landing_page() -> None:
+    """Project walkthrough shown until a datasheet is selected."""
+    _render_hero()
+    st.divider()
+    _render_problem()
+    st.divider()
+    _render_pipeline_steps()
+    st.divider()
+    _render_architecture()
+    st.divider()
+    _render_results()
+    st.divider()
+    _render_how_to_explore()
+    st.divider()
+    _render_gallery()
+
+    st.markdown(
+        f"""
+        <div class="mmr-hero">
+          <h2>Ready to look under the hood?</h2>
+          <p>Select a datasheet in the sidebar to inspect real chunks, or jump
+          straight to Query &amp; Retrieve to ask the pipeline a question.</p>
+          <div class="mmr-actions">
+            <a class="mmr-btn" href="{GITHUB_URL}" target="_blank" rel="noopener">Source code &#8599;</a>
+            <a class="mmr-btn" href="{EVAL_DASHBOARD_URL}" target="_blank" rel="noopener">Evaluation Dashboard &#8599;</a>
+            <a class="mmr-btn" href="{LIVE_APP_URL}" target="_blank" rel="noopener">Live App &#8599;</a>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def main() -> None:
     st.set_page_config(page_title=PAGE_TITLE, layout=LAYOUT)
 
@@ -1142,6 +1953,66 @@ def main() -> None:
         h1 { font-size: 1.6rem; margin-bottom: 0; }
         h2 { font-size: 1.2rem; }
         h3 { font-size: 1.0rem; }
+
+        /* ── Landing page ── */
+        .mmr-hero {
+            border: 1px solid rgba(128,128,128,.28);
+            border-left: 4px solid #ff4b4b;
+            border-radius: 14px;
+            padding: 22px 26px;
+            background: linear-gradient(120deg,
+                rgba(255,75,75,.10), rgba(99,102,241,.10));
+        }
+        .mmr-hero h2 { margin: 0 0 8px 0; font-size: 1.45rem; line-height: 1.25; }
+        .mmr-hero p { margin: 0; font-size: 0.95rem; line-height: 1.6; opacity: 0.85; }
+        .mmr-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+        .mmr-btn {
+            display: inline-block; padding: 7px 14px; border-radius: 999px;
+            font-size: 0.82rem; font-weight: 600; text-decoration: none;
+            border: 1px solid rgba(128,128,128,.38); color: inherit;
+            transition: border-color .15s, color .15s;
+        }
+        .mmr-btn:hover { border-color: #ff4b4b; color: #ff4b4b; }
+        .mmr-badges { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 16px; }
+        .mmr-badge {
+            font-size: 0.72rem; padding: 3px 10px; border-radius: 6px;
+            background: rgba(128,128,128,.14);
+            border: 1px solid rgba(128,128,128,.22); color: inherit;
+        }
+        .mmr-grid {
+            display: grid; gap: 12px;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+        }
+        .mmr-card {
+            border: 1px solid rgba(128,128,128,.22); border-radius: 12px;
+            padding: 16px 18px; background: rgba(128,128,128,.04);
+        }
+        .mmr-step {
+            font-size: 0.68rem; font-weight: 700; letter-spacing: 0.09em;
+            text-transform: uppercase; color: #ff4b4b;
+        }
+        .mmr-card h4 { margin: 5px 0 8px 0; font-size: 1rem; line-height: 1.35; }
+        .mmr-card p { margin: 0; font-size: 0.85rem; line-height: 1.6; opacity: 0.8; }
+        .mmr-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 12px; }
+        .mmr-tag {
+            font-size: 0.68rem; padding: 2px 8px; border-radius: 5px;
+            background: rgba(128,128,128,.12);
+            border: 1px solid rgba(128,128,128,.18); color: inherit; opacity: 0.9;
+        }
+        .mmr-metrics {
+            display: grid; gap: 12px;
+            grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+        }
+        .mmr-metric {
+            text-align: center; padding: 16px 12px; border-radius: 12px;
+            border: 1px solid rgba(128,128,128,.22); background: rgba(128,128,128,.04);
+        }
+        .mmr-metric .v { font-size: 1.6rem; font-weight: 700; line-height: 1.1; }
+        .mmr-metric .l {
+            font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em;
+            margin-top: 6px; opacity: 0.75;
+        }
+        .mmr-metric .h { font-size: 0.7rem; margin-top: 6px; opacity: 0.6; }
         </style>
         """,
         unsafe_allow_html=True,
@@ -1174,7 +2045,7 @@ def main() -> None:
     if page == "Query & Retrieve":
         render_chat_page()
     elif data is None:
-        st.info("Upload a JSON file using the sidebar to get started.")
+        render_landing_page()
     elif page == "Chunk Explorer":
         page_explorer(data)
     elif page == "Compare Chunks":
