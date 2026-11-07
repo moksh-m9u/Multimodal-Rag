@@ -192,7 +192,7 @@ This pipeline uses three services. Each is free to sign up:
 
 ### 1. HuggingFace Token
 
-Used for the embedding model (`Granite`), the vision LLM (`GLM-4.5V`), and the enhancement summariser.
+Used for the vision LLM (`GLM-4.5V`) and the enhancement summariser. Embeddings come from IBM watsonx.ai (see `WATSONX_*` below).
 
 1. Go to [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens)
 2. Click **New token** → give it a name → select **Read** role
@@ -232,6 +232,9 @@ pip install -r requirements.txt
 
 # 4. Create the environment file
 HF_TOKEN="hf_your_huggingface_token_here"
+WATSONX_API_KEY="your_ibm_cloud_api_key_here"
+WATSONX_PROJECT_ID="your_watsonx_project_id_here"
+WATSONX_URL="https://eu-de.ml.cloud.ibm.com"
 GEMINI_API_KEY="your_gemini_api_key_here"
 GROQ_API_KEY="gsk_your_groq_key_here"
 
@@ -288,7 +291,7 @@ All tunable parameters are in `config/settings.py`:
 
 | Setting | Default | Purpose |
 |---|---|---|
-| `EMBEDDING_MODEL` | `ibm-granite/granite-embedding-97m-multilingual-r2` | Embedding model |
+| `EMBEDDING_MODEL` | `ibm/granite-embedding-278m-multilingual` | Embedding model (watsonx.ai); changing it requires re-indexing |
 | `GENERATION_MODEL` | `gemini-2.5-flash` | Answer generation LLM |
 | `CHROMA_PERSIST_DIR` | `dbv1/chroma_db` | Vector store path |
 | `RETRIEVAL_K` | `5` | Number of chunks to retrieve |
