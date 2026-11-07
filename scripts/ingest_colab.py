@@ -24,9 +24,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from langchain_chroma import Chroma
 from langchain_core.documents import Document
-from langchain_huggingface import HuggingFaceEndpointEmbeddings
 
 from config.settings import CHROMA_COLLECTION_METADATA, EMBEDDING_MODEL
+from src.embed import load_embedding_model
 from src.logger import get_logger
 
 logger = get_logger(__name__)
@@ -58,8 +58,8 @@ def ingest_json_directory(
     logger.info("=" * 50)
 
     logger.info("[1/4] Loading embedding model...")
-    embedding_model = HuggingFaceEndpointEmbeddings(model=EMBEDDING_MODEL)
-    logger.info("  Model: %s", embedding_model.model)
+    embedding_model = load_embedding_model()
+    logger.info("  Model: %s", EMBEDDING_MODEL)
 
     logger.info("[2/4] Preparing documents and images...")
     images_dir = Path(images_directory)
@@ -148,11 +148,8 @@ def ingest_json_directory(
         if "429" in str(e) or "rate" in str(e).lower() or "quota" in str(e).lower():
             logger.error("  -> QUOTA/RATE LIMIT EXCEEDED")
             logger.error("  -> Wait a few minutes and re-run this cell.")
-            logger.error(
-                "  -> Or switch to a local embedding model (e.g. sentence-transformers)."
-            )
         elif "401" in str(e) or "403" in str(e) or "auth" in str(e).lower():
-            logger.error("  -> AUTH ERROR - check your HF_TOKEN")
+            logger.error("  -> AUTH ERROR - check WATSONX_API_KEY and WATSONX_PROJECT_ID")
         elif "readonly" in str(e).lower():
             logger.error("  -> DATABASE LOCKED - delete the persist_directory and re-run.")
         else:

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from langchain_chroma import Chroma
 from langchain_core.documents import Document
-from langchain_huggingface import HuggingFaceEndpointEmbeddings
+from langchain_core.embeddings import Embeddings
 from langsmith import traceable
 
 from config.settings import (
@@ -24,7 +24,7 @@ from src.tracing import summarize_chunks
 logger = get_logger(__name__)
 
 
-def load_vector_store(embedding_model: HuggingFaceEndpointEmbeddings) -> Chroma:
+def load_vector_store(embedding_model: Embeddings) -> Chroma:
     """Load the persisted Chroma vector store.
 
     Args:

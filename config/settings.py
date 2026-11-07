@@ -22,12 +22,19 @@ load_dotenv()
 GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
 HF_TOKEN: str = os.getenv("HF_TOKEN", "")
 HUGGINGFACEHUB_API_TOKEN: str = os.getenv("HUGGINGFACEHUB_API_TOKEN", "")
+WATSONX_API_KEY: str = os.getenv("WATSONX_API_KEY", "")
+WATSONX_PROJECT_ID: str = os.getenv("WATSONX_PROJECT_ID", "")
+# Regional watsonx.ai endpoint; must be the region the project lives in.
+WATSONX_URL: str = os.getenv("WATSONX_URL", "https://eu-de.ml.cloud.ibm.com")
 
 # ---------------------------------------------------------------------------
 # Model selection
 # ---------------------------------------------------------------------------
-# Embedding model used to vectorise chunks during ingestion and retrieval.
-EMBEDDING_MODEL: str = "ibm-granite/granite-embedding-97m-multilingual-r2"
+# Embedding model (served by watsonx.ai) used to vectorise chunks during
+# ingestion and retrieval.  Changing it requires re-indexing the store.
+EMBEDDING_MODEL: str = "ibm/granite-embedding-278m-multilingual"
+# The model's context limit; longer inputs are truncated by watsonx.
+EMBEDDING_MAX_INPUT_TOKENS: int = 512
 # Multimodal vision LLM used for AI-enhanced chunk summaries during ingestion.
 ENHANCEMENT_MODEL: str = "zai-org/GLM-4.5V"
 # Router endpoint that serves the enhancement model via the OpenAI protocol.
