@@ -14,6 +14,7 @@ from __future__ import annotations
 from langchain_ibm import WatsonxEmbeddings
 
 from config.settings import (
+    EMBEDDING_MAX_INPUT_TOKENS,
     EMBEDDING_MODEL,
     WATSONX_API_KEY,
     WATSONX_PROJECT_ID,
@@ -26,6 +27,9 @@ logger = get_logger(__name__)
 
 def load_embedding_model() -> WatsonxEmbeddings:
     """Create the watsonx.ai embedding model configured in settings.
+
+    Inputs longer than ``EMBEDDING_MAX_INPUT_TOKENS`` are truncated by the
+    service; without this, watsonx rejects the whole request with a 400.
 
     Returns:
         A configured :class:`WatsonxEmbeddings` instance ready to embed text
@@ -53,4 +57,5 @@ def load_embedding_model() -> WatsonxEmbeddings:
         url=WATSONX_URL,
         project_id=WATSONX_PROJECT_ID,
         apikey=WATSONX_API_KEY,
+        params={"truncate_input_tokens": EMBEDDING_MAX_INPUT_TOKENS},
     )

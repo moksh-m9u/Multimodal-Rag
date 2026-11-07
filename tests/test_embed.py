@@ -17,6 +17,7 @@ def test_builds_watsonx_embeddings_from_settings(monkeypatch):
         "url": embed.WATSONX_URL,
         "project_id": "project",
         "apikey": "key",
+        "params": {"truncate_input_tokens": embed.EMBEDDING_MAX_INPUT_TOKENS},
     }
 
 

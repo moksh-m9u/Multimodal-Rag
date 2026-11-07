@@ -33,6 +33,8 @@ WATSONX_URL: str = os.getenv("WATSONX_URL", "https://eu-de.ml.cloud.ibm.com")
 # Embedding model (served by watsonx.ai) used to vectorise chunks during
 # ingestion and retrieval.  Changing it requires re-indexing the store.
 EMBEDDING_MODEL: str = "ibm/granite-embedding-278m-multilingual"
+# The model's context limit; longer inputs are truncated by watsonx.
+EMBEDDING_MAX_INPUT_TOKENS: int = 512
 # Multimodal vision LLM used for AI-enhanced chunk summaries during ingestion.
 ENHANCEMENT_MODEL: str = "zai-org/GLM-4.5V"
 # Router endpoint that serves the enhancement model via the OpenAI protocol.
