@@ -1532,16 +1532,19 @@ def render_chat_page() -> None:
     )
 
     # Check the backend is reachable before doing anything else.
+    backend_problem = None
     try:
         backend_status = api_health()
-        backend_ok = backend_status.get("status") == "ok"
-    except Exception:
-        backend_ok = False
+        if backend_status.get("status") != "ok":
+            backend_problem = f"is running but unhealthy: {backend_status.get('detail', backend_status)}"
+    except Exception as exc:
+        backend_problem = f"is unreachable ({exc})"
 
-    if not backend_ok:
+    if backend_problem:
         st.error(
-            f"Backend API unreachable at `{API_BASE_URL}`. "
-            f"Start it with `uvicorn api.main:app --reload --port 8000`."
+            f"Backend API at `{API_BASE_URL}` {backend_problem}. "
+            "Set API_BASE_URL to the backend you want, e.g. "
+            "`API_BASE_URL=http://127.0.0.1:8001 streamlit run app/dashboard.py`."
         )
     else:
         st.success(f"Backend connected — vector store: {backend_status.get('vector_store')}")
