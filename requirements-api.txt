@@ -8,6 +8,7 @@
 langchain-core>=0.3
 langchain-chroma>=0.2
 langchain-google-genai>=2.0
+langchain-openai>=0.3
 langchain-ibm>=1.1
 transformers>=4.40
 
