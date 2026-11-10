@@ -9,21 +9,15 @@ from __future__ import annotations
 
 import asyncio
 import time
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from langchain_core.documents import Document
 from langchain_core.messages import HumanMessage
 from langsmith import traceable
 from langsmith.run_helpers import set_tracing_parent
 
-from config.providers import get_provider, get_model, ModelInfo
-from config.settings import (
-    RETRIEVAL_FETCH_K,
-    RETRIEVAL_K,
-    RETRIEVAL_SEARCH_TYPE,
-)
+from config.providers import get_model
 from src.documents import extract_original_data
-from src.embed import load_embedding_model
 from src.logger import get_logger
 from src.retrieval.generate import (
     _build_message_content,
@@ -33,7 +27,10 @@ from src.retrieval.generate import (
     _save_prompt_debug,
     summarize_chunks,
 )
-from src.retrieval.search import build_retriever, load_vector_store, retrieve_chunks
+from src.retrieval.search import retrieve_chunks
+
+if TYPE_CHECKING:
+    from api.service import RAGService
 
 logger = get_logger(__name__)
 
@@ -213,6 +210,7 @@ def answer_query_stream_custom(
 
 
 async def run_custom_query(
+    service: "RAGService",
     query: str,
     top_k: int,
     provider_id: str,
@@ -223,94 +221,29 @@ async def run_custom_query(
     max_images: int = 0,
     thinking: bool = False,
 ) -> tuple[str, dict, dict]:
-    """Run a complete custom query: retrieve -> generate.
+    """Run a complete custom query: retrieve, then generate with the chosen model.
 
-    Returns (answer, retrieve_response_dict, usage_dict).
+    Reuses the application's :class:`RAGService` so the vector store is loaded
+    once per process and figures are registered in the shared image registry
+    that backs ``GET /images/{response_id}/{index}``.
+
+    Returns:
+        A tuple of ``(answer, retrieve_response_dict, usage_dict)``.
+
+    Raises:
+        ValueError: If ``model_id`` is not registered for ``provider_id``.
     """
-    # Load vector store and build retriever
-    model = load_embedding_model()
-    db = load_vector_store(model)
-    if top_k and top_k != RETRIEVAL_K:
-        retriever = db.as_retriever(
-            search_type=RETRIEVAL_SEARCH_TYPE,
-            search_kwargs={"k": top_k, "fetch_k": max(top_k, RETRIEVAL_FETCH_K)},
-        )
-    else:
-        retriever = build_retriever(db)
-
-    # Get model info
-    model_info = get_model(provider_id, model_id)
-    if not model_info:
+    if not get_model(provider_id, model_id):
         raise ValueError(f"Model {model_id} not found for provider {provider_id}")
 
-    # Create LLM
+    await service.ensure_ready()
+    retriever = service.get_retriever(top_k)
     llm = _create_llm_for_model(provider_id, model_id, api_key, temperature, max_tokens, thinking)
 
-    # Run stream
     def _run() -> tuple[str, list, dict]:
         stream = answer_query_stream_custom(retriever, query, llm, model_id, max_images=max_images, thinking=thinking)
-        chunks = stream.chunks
         answer = "".join(stream)
-        return answer, chunks, stream.usage
+        return answer, stream.chunks, stream.usage
 
     answer, chunks, usage = await asyncio.to_thread(_run)
-
-    # Build retrieve response
-    from api.service import RAGService
-    from api.images import ImageRegistry
-
-    images_registry = ImageRegistry()
-    images_by_chunk = [extract_original_data(c)["images_base64"] for c in chunks]
-
-    starts: list[int] = []
-    offset = 0
-    for images in images_by_chunk:
-        starts.append(offset)
-        offset += len(images)
-
-    response_id = images_registry.register(images_by_chunk)
-
-    from api.schemas import ChunkPayload, RetrieveResponse
-
-    payloads: list[ChunkPayload] = []
-    total_images = 0
-    total_tables = 0
-    for i, chunk in enumerate(chunks):
-        raw = extract_original_data(chunk)
-        images = raw["images_base64"]
-        tables = raw["tables_html"]
-        metadata = {
-            k: v
-            for k, v in (chunk.metadata or {}).items()
-            if k not in {"original_content", "raw_text", "tables_html", "images_base64", "image_paths"}
-        }
-        payloads.append(
-            ChunkPayload(
-                chunk_id=i + 1,
-                enhanced_content=chunk.page_content or "",
-                raw_text=raw["raw_text"],
-                tables_html=tables,
-                image_count=len(images),
-                images_base64=images,
-                image_urls=[
-                    f"/images/{response_id}/{starts[i] + j}" for j in range(len(images))
-                ],
-                has_table=bool(tables),
-                has_image=bool(images),
-                source=metadata.get("source"),
-                metadata=metadata,
-            )
-        )
-        total_images += len(images)
-        total_tables += len(tables)
-
-    retrieve_response = RetrieveResponse(
-        query=query,
-        num_chunks=len(chunks),
-        total_images=total_images,
-        total_tables=total_tables,
-        response_id=response_id,
-        chunks=payloads,
-    )
-
-    return answer, retrieve_response.model_dump(), usage
+    return answer, service.to_retrieve_response(query, chunks).model_dump(), usage

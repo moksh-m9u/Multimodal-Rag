@@ -385,6 +385,7 @@ async def query_custom(request: Request, req: CustomQueryRequest) -> CustomQuery
     """Retrieve chunks and generate an answer with a custom provider/model/key."""
     try:
         answer, base, usage = await run_custom_query(
+            service=request.app.state.service,
             query=req.query,
             top_k=req.top_k,
             provider_id=req.provider,
