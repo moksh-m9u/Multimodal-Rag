@@ -163,7 +163,7 @@ multimodal-rag/
 ├── tests/                   # test stubs
 ├── notebooks/               # exploration notebooks
 ├── data/                    # source PDFs
-├── dbv1/                    # persisted ChromaDB (production)
+├── dbv2/                    # persisted ChromaDB + chunk images (production)
 │
 ├── pyproject.toml
 ├── requirements.txt
@@ -292,9 +292,9 @@ All tunable parameters are in `config/settings.py`:
 | Setting | Default | Purpose |
 |---|---|---|
 | `EMBEDDING_MODEL` | `ibm/granite-embedding-278m-multilingual` | Embedding model (watsonx.ai); changing it requires re-indexing |
-| `GENERATION_MODEL` | `gemini-2.5-flash` | Answer generation LLM |
-| `CHROMA_PERSIST_DIR` | `dbv1/chroma_db` | Vector store path |
-| `RETRIEVAL_K` | `5` | Number of chunks to retrieve |
+| `GENERATION_MODEL` | `gemini-3.5-flash-lite` | Answer generation LLM |
+| `CHROMA_PERSIST_DIR` | `dbv2/chroma_db` | Vector store path |
+| `RETRIEVAL_K` | `10` | Number of chunks to retrieve |
 | `CHUNK_MAX_CHARACTERS` | `3000` | Max characters per chunk |
 | `ENHANCEMENT_MODEL` | `zai-org/GLM-4.5V` | Vision model for AI summaries |
 
