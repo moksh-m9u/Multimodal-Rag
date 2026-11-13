@@ -1,7 +1,7 @@
 """Ingestion pipeline entry point.
 
 Partitions a PDF, chunks it, enriches it with AI summaries, exports to JSON
-and creates a Chroma vector store, then runs a quick retrieval smoke test.
+and creates a Chroma vector store.
 
 Usage:
     python -m scripts.ingest                          # default path
@@ -27,21 +27,15 @@ logger = get_logger(__name__)
 DEFAULT_PDF_PATH = "./data/datasheet.pdf"
 
 
-def run_with_retrieval_test(pdf_path: str) -> None:
-    """Run the full pipeline, then do a quick retrieval test."""
+def run_ingestion(pdf_path: str) -> None:
+    """Run the full pipeline: partition, chunk, summarise, export, and store."""
     elements = partition_document(pdf_path)
     chunks = create_chunks_by_title(elements)
     summarised = summarise_chunks(chunks)
 
     export_chunks_to_json(summarised, filename="chunks_huggingface.json")
-    db = create_vector_store(summarised)
-
-    query = "explain the internal architecture"
-    retriever = db.as_retriever(search_kwargs={"k": 5})
-    results = retriever.invoke(query)
-
-    export_chunks_to_json(results, "rag_results.json")
-    logger.info("Done. Retrieved %d chunks for query: %s", len(results), query)
+    create_vector_store(summarised)
+    logger.info("Done. Stored %d chunks from %s", len(summarised), pdf_path)
 
 
 if __name__ == "__main__":
@@ -51,4 +45,4 @@ if __name__ == "__main__":
     logger.info("Multimodal RAG Ingestion Pipeline")
     logger.info("=" * 60)
 
-    run_with_retrieval_test(pdf)
+    run_ingestion(pdf)
