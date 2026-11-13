@@ -178,20 +178,6 @@ def _create_llm() -> ChatGoogleGenerativeAI:
     )
 
 
-def _save_prompt_debug(message_content: list[dict]) -> None:
-    """Dump the full text prompt to ``last_prompt.txt`` for inspection."""
-    from pathlib import Path
-
-    text_content = next(x["text"] for x in message_content if x["type"] == "text")
-    image_count = sum(1 for x in message_content if x["type"] == "image_url")
-    Path("last_prompt.txt").write_text(text_content, encoding="utf-8")
-    logger.info(
-        "Prompt saved to last_prompt.txt (%d chars, %d images)",
-        len(text_content),
-        image_count,
-    )
-
-
 @traceable(run_type="llm", name="GenerateAnswer")
 def generate_answer(
     chunks: list[Document], query: str, verbose: bool = False
@@ -214,7 +200,6 @@ def generate_answer(
 
         llm = _create_llm()
         message_content = _build_message_content(chunks, query)
-        _save_prompt_debug(message_content)
 
         message = HumanMessage(content=message_content)
         start = time.perf_counter()
@@ -403,7 +388,6 @@ def generate_answer_stream(
                 )
 
             message_content = _build_message_content(chunks, query, max_images)
-            _save_prompt_debug(message_content)
 
             prompt_chars, prompt_images = _prompt_stats(message_content)
             usage.update(

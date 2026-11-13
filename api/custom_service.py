@@ -24,7 +24,6 @@ from src.retrieval.generate import (
     _capture_usage,
     _estimate_cost,
     _prompt_stats,
-    _save_prompt_debug,
     summarize_chunks,
 )
 from src.retrieval.search import retrieve_chunks
@@ -147,7 +146,6 @@ def generate_answer_stream(
                     "Then provide your final answer after the </think> tag."
                 )
                 message_content[0]["text"] += thinking_instruction
-            _save_prompt_debug(message_content)
 
             prompt_chars, prompt_images = _prompt_stats(message_content)
             usage.update(
