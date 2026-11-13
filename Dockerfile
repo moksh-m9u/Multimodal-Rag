@@ -11,23 +11,12 @@ FROM python:3.13-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1 \
-    HF_HOME=/app/.hf
+    PIP_NO_CACHE_DIR=1
 
 WORKDIR /app
 
-# System libraries required by the ML stack (OpenCV/libGL, glib) at import time.
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        libgl1 \
-        libglib2.0-0 \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install CPU-only PyTorch first: the API never runs on a GPU, and the default
-# torch wheels pull ~2GB of unused CUDA libraries.  The pip install below will
-# then see torch already satisfied and skip those downloads.
-RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
-
 # Backend-only dependencies (ingestion/dashboard libs stay out of the image).
+# Embeddings are a watsonx.ai API call, so no ML framework runs in this image.
 # Copy requirements first so layer caching kicks in on code-only changes.
 COPY requirements-api.txt .
 RUN pip install --no-cache-dir -r requirements-api.txt

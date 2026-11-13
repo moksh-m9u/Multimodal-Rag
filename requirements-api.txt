@@ -1,16 +1,14 @@
 # Runtime dependencies for the FastAPI backend only (used by the Dockerfile).
 #
-# NOTE: `torch` is intentionally NOT listed here - the Dockerfile installs it
-# separately from the CPU-only index (https://download.pytorch.org/whl/cpu) to
-# avoid pulling ~2GB of unused CUDA wheels.  transformers requires torch, which
-# is why the CPU install must run first.
+# Embeddings come from the watsonx.ai API and generation from hosted LLMs, so
+# the backend needs no local ML framework. Ingestion dependencies
+# (unstructured, OCR) live in requirements.txt and stay out of this image.
 
 langchain-core>=0.3
 langchain-chroma>=0.2
 langchain-google-genai>=2.0
 langchain-openai>=0.3
 langchain-ibm>=1.1
-transformers>=4.40
 
 fastapi>=0.110
 uvicorn[standard]>=0.29
