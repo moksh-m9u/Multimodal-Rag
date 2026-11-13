@@ -1,10 +1,21 @@
-.git
-.gitignore
-.venv
-__pycache__
-*.pyc
-.env
-logs
-last_prompt.txt
-nltk_data
-.streamlit
+# Allowlist: ignore everything, then re-include only what the API reads at
+# runtime. A new folder stays out of the image until it is listed here, so a
+# forgotten entry fails at startup instead of silently growing the image.
+*
+
+# Backend code imported by `uvicorn api.main:app`.
+!api
+!src
+!config
+
+# The Chroma store (dbv2/chroma_db) and the figure JPEGs (dbv2/images) that
+# stored chunk metadata points at.
+!dbv2
+
+# Installed in its own layer before the code is copied.
+!requirements-api.txt
+
+# Re-exclude build litter inside the folders allowed above.
+**/__pycache__
+**/*.pyc
+**/.DS_Store

@@ -21,7 +21,8 @@ WORKDIR /app
 COPY requirements-api.txt .
 RUN pip install --no-cache-dir -r requirements-api.txt
 
-# Application code plus the pre-built vector store (dbv2/) and PDF assets.
+# .dockerignore is an allowlist, so this copies only the backend code (api/,
+# src/, config/) and the pre-built vector store with its figures (dbv2/).
 COPY . .
 
 # Writable runtime artifacts (logs are also mirrored to stdout).
