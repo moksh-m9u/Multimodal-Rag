@@ -4,6 +4,7 @@ Instructions for any coding agent (Claude Code, Codex, Cursor, and others) worki
 
 - `docs/TRADEOFFS.md`: why each component is built the way it is, the alternatives, and the current recommendation.
 - `docs/PRODUCT_RESEARCH.md`: what users who upload datasheets and PCB documents actually need, and where this project can stand out.
+- `docs/GLOSSARY.md`: plain-language explanations of the technical terms used in the code and the docs.
 
 ## Why this repository exists
 
@@ -47,6 +48,12 @@ Start: api/routers/query.py:query()          the HTTP entry point
 Data: QueryRequest -> list[Document] (metadata: raw_text, tables_html, image_paths) -> str answer -> QueryResponse
 Try: set a breakpoint in X, or run the command below, and look at Y.
 ```
+
+The owner wants depth here. At each hop, also explain from first principles what the library underneath does for us (FastAPI, LangChain, Chroma, unstructured, and so on): what it receives, what it returns, and what would break without it. Assume no prior knowledge of that library.
+
+### Glossary
+
+`docs/GLOSSARY.md` holds a short plain-language explanation of every technical term the project uses (SSE, HNSW, MMR, RRF, lifespan, and so on). When a change or a document introduces a term that is not there yet, add it in the same change and link to it rather than explaining it again elsewhere.
 
 ### Commits and branches
 
@@ -152,6 +159,8 @@ Notes:
 
 `GEMINI_API_KEY`, `HF_TOKEN`, `WATSONX_API_KEY`, `WATSONX_PROJECT_ID`, `WATSONX_URL`, `API_BASE_URL`, `CORS_ALLOWED_ORIGINS`, `GENERATION_MAX_TOKENS`, and the LangSmith variables (`LANGSMITH_API_KEY`, `LANGSMITH_TRACING`, `LANGSMITH_PROJECT`). See `config/settings.py` for defaults.
 
+Also present in `.env` for the hosted parser: `UNSTRUCTURED_API_KEY` and `UNSTRUCTURED_URL` (the v2 Transform API). A planned `PARSER_BACKEND` (`local` in development, `hosted` in production) will choose between local hi_res and the hosted Parse API; see `docs/TRADEOFFS.md`, section 1.
+
 ## Decisions made
 
 Recorded so no agent re-opens them. Dates are when the owner decided.
@@ -164,6 +173,18 @@ Recorded so no agent re-opens them. Dates are when the owner decided.
   - add `POST /query/stream` for streaming;
   - return real HTTP errors, with 502 when the LLM provider fails.
 - 2026-11-13: **`/v1` prefix** on every API endpoint except `/` and `/health`, which stay unversioned for uptime probes. The planned endpoint list is in `docs/TRADEOFFS.md`, section 8.
+- 2026-11-13: **Component choices.** `docs/TRADEOFFS.md` marks every option in its tables as (chosen), (future option), (to research), or (not pursued). Alternatives are never deleted. In short:
+  - extraction: local unstructured hi_res in development, Unstructured's hosted Parse API in production, switched by one environment variable; free Render or Railway tiers cannot run hi_res;
+  - chunking: by title only;
+  - enrichment: keep the existing summaries; research a hosted multimodal model that takes 5 to 6 images per call, a local vision model (framework and model), and multi-vector embeddings;
+  - embeddings: watsonx Granite 278M; no local sentence-transformers;
+  - retrieval: hybrid search once on Postgres; metadata filtering by document and document type still to design;
+  - generation: Gemini Flash-Lite stays the default;
+  - frontend: React with TypeScript in a later phase; Next.js or Vite decided then;
+  - database host: Railway Postgres, tentatively; hosting overall still to discuss.
+- 2026-11-13: **First upload target is datasheets.** Privacy (local mode) is a later add-on. The demo user is a mix of student and working engineer.
+- 2026-11-13: **Working style.** Keep the checkpoint order. There is no fixed deadline; understanding comes before speed. For the evaluation set, the agent drafts questions with expected answers and pages, and the owner reviews every one.
+- A chosen option is not frozen. When working on an area, give your own opinion and ask if you see a better path, then proceed with the chosen option unless the owner changes it.
 - Auth is deferred to a later phase.
 
 ## Checkpoints for the current phase
@@ -175,7 +196,9 @@ Each checkpoint is a set of small commits. Finish one, let the owner test and pu
 
 **Checkpoint 1. Repository hygiene.** Status: in progress.
 - Done: removed `chunks_export.json`, `rag_results.json`, `notebooks/raw.md`, `scripts/test_single_image_trace.py`, and the `last_prompt.txt` debug write. The owner chose to keep `parsed_pdf/`, `queries.txt`, and the notebook.
-- Drop `torch` and `transformers` from the API image. Nothing in the backend imports them since embeddings moved to watsonx.
+- Done: dropped `torch`, `transformers`, and the OpenCV system libraries from the API image; a local `docker build` and `/health` check passed on 2026-11-13. `docker run --env-file` does not strip quotes, so `.env` values must be unquoted.
+- Next: the three items below, in order.
+- Tighten `.dockerignore`. `COPY . .` currently puts `parsed_pdf/` (42 MB), `notebooks/`, `data/` PDFs, `assets/`, `.claude/`, and the JSON exports into the image, and the API reads none of them.
 - Fix the data bug: `json/LM555TImer.json` is a copy of the TLV1117 export, so TLV1117 is indexed twice and LM555 is missing. The real LM555 chunks (36, summaries included) are in the root `chunks_huggingface.json`. The fix needs only embedding calls, no summarizer.
 - Update the README to the current stack (watsonx, Gemini 3.5 Flash-Lite, k=10).
 
@@ -187,6 +210,7 @@ Each checkpoint is a set of small commits. Finish one, let the owner test and pu
 - Prune the model catalogue. On 2026-11-13, 5 of the 9 Groq models listed (`llama-3.3-70b-versatile`, `llama-3.1-8b-instant`, `qwen/qwen3.6-27b`, `groq/compound`, `groq/compound-mini`) returned 404 for the owner's key. Consider checking against each provider's `/models` endpoint.
 - Replace the `thinking` prompt instruction with each provider's native reasoning control (Groq `reasoning_effort`). Reasoning models spend output tokens on reasoning, so the default `max_tokens` of 512 can cut answers short.
 - The o-series OpenAI models accept only their default temperature, so do not send `temperature=0` to them.
+- Return the figures the model actually saw. Add `figures` to the `/v1/query` response (and the `done` stream event): the image URLs sent in the prompt, in prompt order, each with its chunk and source document. Label each image in the prompt (`Figure F1, from <document>, chunk <n>`) so the model can cite `[F1]`. This is the baseline for citations; see Later phases for highlighted text.
 
 **Checkpoint 3. Pipeline readability and known bugs.**
 - Docstrings everywhere, remove all banner comments (about 75).
@@ -201,23 +225,26 @@ Each checkpoint is a set of small commits. Finish one, let the owner test and pu
 - Add a `GET /providers` endpoint so the UI stops importing `config/providers.py`.
 - Serve dataset browsing through the API instead of reading `json/` directly.
 - Split `app/dashboard.py` into Streamlit pages plus shared components.
+- Show the `figures` strip under each answer, with the figures the answer cites (`[F1]`) shown first.
 
 **Checkpoint 5. Evaluation baseline.**
-- Turn `evals/testing.json` into a small golden set covering text, table, and figure questions per document.
+- Turn `evals/testing.json` into a small golden set covering text, table, figure, and "not stated" questions per document. The agent drafts each question with its expected answer and page; the owner reviews every one.
 - One script reports retrieval hit rate and answer correctness.
 - Record the baseline in `docs/TRADEOFFS.md` so later changes (chunking, embeddings, cache, the Postgres migration) are measured, not guessed.
 
-**Checkpoint 6. Postgres + pgvector.** Decision: the host (Railway, Neon, or Supabase).
+**Checkpoint 6. Postgres + pgvector.** Host: Railway Postgres, tentatively; confirm before starting.
 - Schema for documents, chunks (with `vector(768)`), images, queries, retrievals, answers, and feedback, with Alembic migrations.
 - A one-off script copies ids, summaries, embeddings, and metadata out of Chroma into Postgres. No summarizer and no re-embedding.
 - Swap the retriever to pgvector and confirm the evaluation numbers match Chroma's.
 - Remove Chroma once they match.
 
 **Checkpoint 7. Upload and ingest through the API.** This is the product goal of the phase.
+- Keep each element's page number and bounding box from `unstructured` (`metadata.page_number`, `metadata.coordinates`) on the chunk. Highlighted citations depend on this, and it cannot be recovered later without re-extracting.
 - `POST /documents` uploads a PDF and starts an ingestion job.
 - `GET /documents/{id}` reports the job's status.
 - Queries can be scoped to one or more documents.
-- Decision: the summarizer for new uploads (the Hugging Face credit is gone). Options are a local vision model through Ollama, or Gemini Flash-Lite through the existing Gemini key.
+- Research, then decide: the summarizer for new uploads (the Hugging Face credit is gone). Candidates are a hosted multimodal model taking 5 to 6 images per call, a local vision model, and multi-vector embeddings (`docs/TRADEOFFS.md`, section 3).
+- Parser backend switch (`PARSER_BACKEND=local|hosted`), one adapter that turns local and hosted elements into the same shape, and figure cropping from page renders, because the hosted Parse API returns image boxes but no image bytes (`docs/TRADEOFFS.md`, section 1).
 
 **Checkpoint 8. Semantic cache.**
 - Cache answers keyed by question embedding similarity plus an exact match on part numbers. The key also includes the model, `top_k`, and the corpus version, and failures are never cached.
@@ -227,6 +254,14 @@ Each checkpoint is a set of small commits. Finish one, let the owner test and pu
 - Bring Railway back with the watsonx and database variables.
 - Set `API_BASE_URL` in Streamlit Cloud secrets.
 - Document the deploy in the README.
+
+## Later phases (not now)
+
+Recorded so the current work does not block them. Do not start these until the checkpoints above are done.
+
+- **React frontend.** A TypeScript and React web app (Next.js or Vite, decided then) replaces Streamlit as the product UI, and Streamlit stays as an internal inspection tool. It is possible only because the UI talks to the backend over HTTP alone, which Checkpoint 4 finishes. The owner will also use it to practise JavaScript fundamentals.
+- **Highlighted citations.** The UI renders the source PDF page (for example with pdf.js) and highlights the exact passage or table cell an answer came from, using the page numbers and bounding boxes kept in Checkpoint 7. This goes further than citing a file name.
+- **PCB design agent.** The long-term direction described at the top of this file.
 
 ## Things not to do
 

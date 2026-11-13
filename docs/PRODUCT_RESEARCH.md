@@ -44,7 +44,9 @@ The current corpus is TLV1117, LM317, LM2596, LM555, and the AN699 application n
 
 ### Tier 1: makes the core Q&A trustworthy
 
-1. **Answers cited to page and region.** Every claim names the document, the page, and the table or figure, and the UI shows the cropped region. This requires keeping page numbers and bounding boxes during ingestion (see `docs/TRADEOFFS.md`, section 1).
+1. **Answers cited to page and region.** Every claim names the document, the page, and the table or figure, and the UI shows the cropped region. This requires keeping page numbers and bounding boxes during ingestion (see `docs/TRADEOFFS.md`, section 1). It comes in two steps:
+   - **Baseline (Checkpoints 2 and 4):** show the user the figures the model actually saw, in prompt order. Each one is labelled so the answer can cite it as `[F1]`, and cited figures come first. It is cheap, it uses data we already have, and for circuit and graph questions the figure is often the most convincing evidence.
+   - **Full (later phase):** render the PDF page and highlight the exact passage or table cell. ChatGPT and Claude usually cite only the file, so this would set the product apart.
 2. **Spec answers with their conditions.** "Dropout voltage is 1.2 V typical, 1.3 V max, at IOUT = 800 mA, TJ = 25 °C (Table 7.5, page 5)". The prompt must require the min, typ, and max values and the test conditions whenever they exist.
 3. **"Not stated in this document"** as a first-class answer, measured in the evaluation set.
 4. **Figure and graph questions.** "What does the efficiency-versus-load curve show at 2 A?" This is where a multimodal pipeline beats text-only tools, and it is the reason this project exists. Be honest that reading values off curves is approximate.
@@ -83,12 +85,17 @@ Most existing tools are text-first. Few publish how accurate they are. This proj
 3. **Engineering-correct.** Conditions attached to every spec, min, typ, and max kept distinct, and calculations done in code.
 4. **Explainable architecture.** Every component has a written trade-off (see `docs/TRADEOFFS.md`).
 
-## Open questions for the owner
+## Questions for the owner
 
-1. Which documents should the first upload version accept: datasheets and app notes only, or schematic PDFs as well?
-2. Is privacy (local models, nothing leaves the machine) a goal for this phase, or later?
-3. Who is the target user for the demo: a student learning to read datasheets, or a working engineer checking a design? This changes the tone and the features on the first screen.
-4. Should the key-specs card (item 5) be part of the upload flow in Checkpoint 7, or a separate later feature?
+Answered on 2026-11-13:
+
+1. **Which documents should the first upload version accept?** Datasheets. Application notes and schematic PDFs come later.
+2. **Is privacy a goal for this phase?** No. Local or private mode is a future add-on (Tier 3, item 12).
+3. **Who is the target user for the demo?** A mix of a student learning to read datasheets and a working engineer checking a design. The owner is not yet sure which to lead with, so the first screen should serve both and this may be revisited.
+
+Still open:
+
+4. Should the key-specs card (item 5) be part of the upload flow in Checkpoint 7, or a separate later feature? Unstructured's hosted `/extract` endpoint, which fills a JSON Schema from a document, is one way to build it (`docs/TRADEOFFS.md`, section 1).
 
 ## Sources
 
