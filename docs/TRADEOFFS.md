@@ -199,7 +199,69 @@ The custom-provider path duplicates the default path today. Both become one func
 
 The API key in the `llm` object travels in the request body over HTTPS. It must never be logged or stored, and it must never appear in traces.
 
-**Still open:** a `/v1` prefix. It lets the API evolve without breaking old clients, at the cost of slightly longer URLs. Since the only client today is our own UI, it can wait.
+**Decided (2026-11-13): a `/v1` prefix** on every endpoint except `/` and `/health`. It lets the API change later (`/v2`) without breaking clients, at the cost of slightly longer URLs. Health stays unversioned because uptime probes and Railway's health check should not break when the API version changes.
+
+### Planned endpoints
+
+| Endpoint | Replaces | Checkpoint | What it does |
+|---|---|---|---|
+| `GET /` | same | 2 | Index of endpoints and a link to `/docs` |
+| `GET /health` | same | 2 | Store loaded or not; 503 while loading |
+| `POST /v1/retrieve` | `POST /retrieve` | 2 | Chunks only, no answer |
+| `POST /v1/query` | `POST /query` and `POST /query/custom` | 2 | Chunks plus an answer. An optional `llm` object picks the model; without it the default Gemini model is used |
+| `POST /v1/query/stream` | `GET /query/stream` | 2 | Same body as `/v1/query`, answer streamed over SSE |
+| `GET /v1/images/{chunk_id}/{position}` | `GET /images/{response_id}/{index}` | 2 | One figure as JPEG, read from disk |
+| `GET /v1/providers` | the UI importing `config/providers.py` | 4 | Providers and their models, for the model picker |
+| `GET /v1/documents` | the UI reading `json/` | 4 | Indexed documents with chunk counts |
+| `GET /v1/documents/{document_id}/chunks` | the UI reading `json/` | 4 | Every chunk of one document, for the chunk explorer |
+| `POST /v1/documents` | new | 7 | Upload a PDF; returns 202 with a document id and status `queued` |
+| `GET /v1/documents/{document_id}` | new | 7 | Ingestion status (`queued`, `processing`, `ready`, `failed`), pages, chunk count |
+| `DELETE /v1/documents/{document_id}` | new | 7 | Remove a document with its chunks and images |
+| `POST /v1/queries/{query_id}/feedback` | new | 6 | Thumbs up or down plus a comment on one answer |
+
+Request body shared by `/v1/query` and `/v1/query/stream`:
+
+```json
+{
+  "query": "What is the dropout voltage of the TLV1117 at 800 mA?",
+  "top_k": 10,
+  "max_images": 4,
+  "document_ids": ["tlv1117"],
+  "llm": {"provider": "groq", "model": "openai/gpt-oss-20b", "api_key": "...", "temperature": 0, "max_tokens": 1024}
+}
+```
+
+`document_ids` arrives in Checkpoint 7; until then all documents are searched.
+
+Response changes:
+- **Removed:** `images_base64` and `response_id`.
+- **Added, as the features arrive:**
+  - `query_id` (Checkpoint 6), to attach feedback;
+  - `cached` (Checkpoint 8);
+  - `score`, `document`, and `page` on each chunk;
+  - `image_urls` built from `chunk_id`.
+
+`chunk_id` must be globally unique: the store's record id, not the 1-based position the response uses today.
+
+Stream events for `/v1/query/stream`:
+
+| Event | Data |
+|---|---|
+| `retrieval` | The chunks, as in `/v1/retrieve` |
+| `token` | One piece of the answer |
+| `done` | Usage, latency, and cost |
+| `error` | Status and message, sent instead of `done` when the provider fails mid-stream |
+
+Errors are returned as JSON with a `detail` field:
+
+| Status | When |
+|---|---|
+| 404 | An unknown image, document, provider, or model |
+| 413 | An upload that is too large |
+| 422 | Invalid input |
+| 502 | The LLM provider failed or rejected the key |
+| 503 | The store is not ready yet |
+| 504 | The provider timed out |
 
 How FastAPI fits with LangChain: build the LLM, retriever, and later any LangGraph graph once in the lifespan handler and store them on `app.state`. In handlers, `await chain.ainvoke(...)` for a full answer and `async for chunk in chain.astream(...)` wrapped in a `StreamingResponse` for SSE. Synchronous-only code goes through `asyncio.to_thread` so one slow request does not block the others.
 
@@ -331,7 +393,6 @@ Out of scope for this phase. The current flow is a straight line (retrieve, then
 ## Open decisions
 
 1. Database host: Railway, Neon, or Supabase (Checkpoint 6).
-2. A `/v1` prefix on the API (Checkpoint 2).
-3. Summarizer for new uploads: a local vision model or Gemini Flash-Lite (Checkpoint 7).
-4. Storage for uploaded PDFs and figure images: a volume or object storage (Checkpoint 7).
-5. Which document types the upload accepts first: datasheets and app notes only, or schematic PDFs too (see `docs/PRODUCT_RESEARCH.md`).
+2. Summarizer for new uploads: a local vision model or Gemini Flash-Lite (Checkpoint 7).
+3. Storage for uploaded PDFs and figure images: a volume or object storage (Checkpoint 7).
+4. Which document types the upload accepts first: datasheets and app notes only, or schematic PDFs too (see `docs/PRODUCT_RESEARCH.md`).

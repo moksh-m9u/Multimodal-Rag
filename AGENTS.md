@@ -163,17 +163,18 @@ Recorded so no agent re-opens them. Dates are when the owner decided.
   - merge `/query` and `/query/custom` into one `POST /query` with an optional `llm: {provider, model, api_key}` object;
   - add `POST /query/stream` for streaming;
   - return real HTTP errors, with 502 when the LLM provider fails.
+- 2026-11-13: **`/v1` prefix** on every API endpoint except `/` and `/health`, which stay unversioned for uptime probes. The planned endpoint list is in `docs/TRADEOFFS.md`, section 8.
 - Auth is deferred to a later phase.
 
 ## Checkpoints for the current phase
 
 Each checkpoint is a set of small commits. Finish one, let the owner test and push it, then start the next. Items marked "decision" still need the owner's answer before work starts. Status lives here, so update it when a checkpoint is done.
 
-**Checkpoint 0. Ground rules and docs.** Status: in progress.
+**Checkpoint 0. Ground rules and docs.** Status: done.
 `AGENTS.md`, `docs/TRADEOFFS.md`, `docs/PRODUCT_RESEARCH.md`.
 
-**Checkpoint 1. Repository hygiene.**
-- Remove root clutter after confirming each item: `chunks_export.json`, `rag_results.json`, `queries.txt`, `last_prompt.txt` writes, `parsed_pdf/`, `notebooks/raw.md`, `scripts/test_single_image_trace.py`, `multimodal_rag.egg-info/`, `logs/`.
+**Checkpoint 1. Repository hygiene.** Status: in progress.
+- Done: removed `chunks_export.json`, `rag_results.json`, `notebooks/raw.md`, `scripts/test_single_image_trace.py`, and the `last_prompt.txt` debug write. The owner chose to keep `parsed_pdf/`, `queries.txt`, and the notebook.
 - Drop `torch` and `transformers` from the API image. Nothing in the backend imports them since embeddings moved to watsonx.
 - Fix the data bug: `json/LM555TImer.json` is a copy of the TLV1117 export, so TLV1117 is indexed twice and LM555 is missing. The real LM555 chunks (36, summaries included) are in the root `chunks_huggingface.json`. The fix needs only embedding calls, no summarizer.
 - Update the README to the current stack (watsonx, Gemini 3.5 Flash-Lite, k=10).
@@ -181,15 +182,17 @@ Each checkpoint is a set of small commits. Finish one, let the owner test and pu
 **Checkpoint 2. Backend structure.**
 - Split `api/main.py` into `api/routers/system.py`, `retrieval.py`, `query.py`, `images.py`. `main.py` keeps only app creation, CORS, the lifespan, and `include_router` calls.
 - Merge the default and custom generation paths into one function that receives an LLM.
-- Apply the agreed API changes (see Decisions made). These are breaking, so update `app/api_client.py` and `API.md` in the same checkpoint.
-- Decision: whether to add a `/v1` prefix.
+- Apply the agreed API changes, including the `/v1` prefix (see Decisions made). These are breaking, so update `app/api_client.py` and `API.md` in the same checkpoint.
+- Replace `_create_llm_for_model` in `api/custom_service.py` with a factory in `src/` that chooses the client by provider id, not by model-name prefix. Every provider's `base_url` lives in `config/providers.py`, including Groq's. An unknown provider is rejected instead of silently going to Groq.
+- Prune the model catalogue. On 2026-11-13, 5 of the 9 Groq models listed (`llama-3.3-70b-versatile`, `llama-3.1-8b-instant`, `qwen/qwen3.6-27b`, `groq/compound`, `groq/compound-mini`) returned 404 for the owner's key. Consider checking against each provider's `/models` endpoint.
+- Replace the `thinking` prompt instruction with each provider's native reasoning control (Groq `reasoning_effort`). Reasoning models spend output tokens on reasoning, so the default `max_tokens` of 512 can cut answers short.
+- The o-series OpenAI models accept only their default temperature, so do not send `temperature=0` to them.
 
 **Checkpoint 3. Pipeline readability and known bugs.**
 - Docstrings everywhere, remove all banner comments (about 75).
 - Split `src/retrieval/generate.py` into prompt building, the LLM factory, and streaming.
 - Fix:
   - only the first 5 chunks' text reaches the prompt while images come from all chunks;
-  - the `thinking` prompt hack in `api/custom_service.py`;
   - streamed usage tokens reporting 0;
   - cost estimates hardcoded to Gemini prices.
 
