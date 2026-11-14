@@ -276,7 +276,7 @@ flowchart LR
 
     subgraph ST["4 - Storage"]
         CHROMA[("ChromaDB<br/>cosine similarity")]
-        JSONF[("chunks_huggingface.json")]
+        JSONF[("json/*.json<br/>chunk exports")]
     end
 
     subgraph RE["5 - Retrieval"]
