@@ -75,9 +75,9 @@ What this means:
 | Page-level | Matches how engineers cite datasheets; pairs naturally with page images | A page mixes unrelated topics; weaker matching |
 | Element-level plus parent retrieval | Small units for matching, the whole section for the answer | More moving parts to explain |
 
-There is an interaction with embeddings: the watsonx model accepts only 512 tokens, roughly 2,000 characters. About 39 of 312 summaries are longer and are silently truncated. Either chunks and summaries must be shorter, or the embedding model needs a longer context.
+There is an interaction with embeddings: the watsonx model accepts only 512 tokens, roughly 2,000 characters. 45 of the 270 summaries (about 17 percent) are longer than 2,000 characters and are silently truncated. An earlier count of 39 of 312 included the TLV1117 chunks twice and left out LM555. Either chunks and summaries must be shorter, or the embedding model needs a longer context.
 
-**How to defend it:** "Datasheets are organised by section, and a question usually targets one section, so title-based chunking matches the structure. Fixed-size chunking would split electrical characteristics tables. I measured that about 12 percent of summaries exceed the embedding limit, so the next step is capping summary length."
+**How to defend it:** "Datasheets are organised by section, and a question usually targets one section, so title-based chunking matches the structure. Fixed-size chunking would split electrical characteristics tables. I measured that about 17 percent of summaries exceed the embedding limit, so the next step is capping summary length."
 
 **Owner (2026-11-13):** chunk by title only, for now.
 
@@ -101,11 +101,11 @@ A summary can hallucinate. That is acceptable only because the answer is generat
 
 Switching provider is a configuration change: `ENHANCEMENT_BASE_URL` and `ENHANCEMENT_MODEL` point at any OpenAI-compatible server (Ollama serves one at `http://localhost:11434/v1`).
 
-The summarizer is needed only for **new** documents. The existing 312 summaries are stored in Chroma and in `json/`, and they move to Postgres as they are (section 5).
+The summarizer is needed only for **new** documents. The existing 270 summaries are stored in Chroma and in `json/`, and they move to Postgres as they are (section 5).
 
 **How to defend it:** "Summaries are an index, not a source. They translate tables and figures into the language people ask in, which raises recall, and the generator still reads the original so a bad summary costs recall, never correctness. Summaries are produced once and stored, so losing a provider never forces re-summarizing the corpus."
 
-**Owner (2026-11-13):** keep the existing 312 summaries exactly as they are. For new uploads, three options go on the to-do list, each needing research before a decision:
+**Owner (2026-11-13):** keep the existing summaries exactly as they are (270, after the duplicate TLV1117 copy was removed on 2026-11-14; recorded as 312 at the time). For new uploads, three options go on the to-do list, each needing research before a decision:
 
 1. **A hosted multimodal model** that accepts at least 5 to 6 images per request, so one chunk's figures fit in a single call. GLM-4.5V is the reference point; any comparable model through an OpenAI-compatible endpoint qualifies.
 2. **A local vision language model.** Deep research is needed on both the serving framework (Ollama, LM Studio, mlx-vlm, llama.cpp) and the model (for example the Qwen-VL and Gemma families), judged on table reading, images per call, speed on the owner's 16 GB M4, and memory.
@@ -439,7 +439,7 @@ Clients never notice any of these changes.
 
 **Status:**
 - Removed torch, transformers, and the OpenCV system libraries (Checkpoint 1, done).
-- Tighten `.dockerignore` (Checkpoint 1).
+- `.dockerignore` is an allowlist, so the image holds only `api/`, `src/`, `config/`, and `dbv2/`; 1.34 GB down to 1.17 GB (Checkpoint 1, done).
 - Decide image and PDF storage with uploads (Checkpoint 7).
 - Restore Railway (Checkpoint 9).
 

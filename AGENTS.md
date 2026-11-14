@@ -197,10 +197,9 @@ Each checkpoint is a set of small commits. Finish one, let the owner test and pu
 **Checkpoint 1. Repository hygiene.** Status: in progress.
 - Done: removed `chunks_export.json`, `rag_results.json`, `notebooks/raw.md`, `scripts/test_single_image_trace.py`, and the `last_prompt.txt` debug write. The owner chose to keep `parsed_pdf/`, `queries.txt`, and the notebook.
 - Done: dropped `torch`, `transformers`, and the OpenCV system libraries from the API image; a local `docker build` and `/health` check passed on 2026-11-13. `docker run --env-file` does not strip quotes, so `.env` values must be unquoted.
-- Next: the three items below, in order.
-- Tighten `.dockerignore`. `COPY . .` currently puts `parsed_pdf/` (42 MB), `notebooks/`, `data/` PDFs, `assets/`, `.claude/`, and the JSON exports into the image, and the API reads none of them.
-- Fix the data bug: `json/LM555TImer.json` is a copy of the TLV1117 export, so TLV1117 is indexed twice and LM555 is missing. The real LM555 chunks (36, summaries included) are in the root `chunks_huggingface.json`. The fix needs only embedding calls, no summarizer.
-- Update the README to the current stack (watsonx, Gemini 3.5 Flash-Lite, k=10).
+- Done: `.dockerignore` is an allowlist (`api/`, `src/`, `config/`, `dbv2/`, `requirements-api.txt`). The image went from 1.34 GB to 1.17 GB.
+- Done: fixed the LM555 data bug on 2026-11-14. `json/LM555TImer.json` was a copy of the TLV1117 export, and the store held TLV1117 twice (the second copy under the source `chunks_huggingface`) and no LM555. The real LM555 export (36 chunks, formerly the root `chunks_huggingface.json`) now lives at `json/LM555TImer.json`, its 36 summaries were embedded with watsonx, and the 78 duplicate records and their 74 figure files were removed. The store holds 270 records and 267 figures.
+- Next: update the README to the current stack (watsonx, Gemini 3.5 Flash-Lite, k=10).
 
 **Checkpoint 2. Backend structure.**
 - Split `api/main.py` into `api/routers/system.py`, `retrieval.py`, `query.py`, `images.py`. `main.py` keeps only app creation, CORS, the lifespan, and `include_router` calls.
