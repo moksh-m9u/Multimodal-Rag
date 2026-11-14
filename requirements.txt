@@ -18,3 +18,5 @@ langsmith
 
 # Development / testing
 pytest>=8.0
+# Required by FastAPI's TestClient (tests/test_api.py).
+httpx>=0.27

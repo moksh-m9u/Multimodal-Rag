@@ -35,3 +35,6 @@ include = ["src.*", "config.*", "scripts.*"]
 testpaths = ["tests"]
 pythonpath = ["."]
 addopts = "-q"
+markers = [
+    "live: calls the real store, watsonx, and Gemini; skipped unless run with -m live",
+]

@@ -85,3 +85,17 @@ Plain-language explanations of the technical terms used in this repository. Each
 **Volume.** A folder that lives outside the container's own filesystem and survives when the container is removed. Not used here yet; the Chroma store is baked into the image instead.
 
 **Multi-stage build.** A Dockerfile with several `FROM` lines. An early stage holds compilers and build tools, and the final stage copies only the finished result out of it, so the tools never reach the shipped image.
+
+## Testing
+
+**Fixture.** A pytest function that prepares something a test needs and cleans it up afterwards. A test asks for it by naming it as an argument. Here `backend` and `client` in `tests/test_api.py`.
+
+**Monkeypatch.** pytest's built-in fixture for temporarily replacing an attribute, such as a function inside a module, for one test. It puts the original back when the test ends. Here it swaps the Chroma loader and the LLM builders for fakes.
+
+**Fake (test double).** A small stand-in object that behaves like the real dependency for the few methods the code calls. `_FakeStore` has only `as_retriever`, and `_FakeLLM` has only `stream`.
+
+**TestClient.** FastAPI's in-process HTTP client, built on `httpx`. It sends real requests to the app without starting a server or opening a port. Used inside `with`, it also runs the app's lifespan.
+
+**Characterization test.** A test that records what the code does now, including behaviour known to be wrong, so a refactor can prove it changed nothing. When the defect is fixed, the test is updated in the same change. `test_health_reports_store_failure` is one; its docstring names the defect.
+
+**Marker.** A label on a test (`@pytest.mark.live`) that lets a run select it or leave it out with `-m`. Markers are registered in `pyproject.toml`. Here `live` tests are skipped unless the run uses `-m live`.
