@@ -99,7 +99,9 @@ src/retrieval/
   generate.py             build the multimodal prompt, call Gemini, stream, trace
 src/documents.py        turns stored chunk metadata back into text, tables, images
 src/tracing.py          LangSmith helpers
-api/main.py             FastAPI app and endpoints (to be split into api/routers/)
+api/main.py             FastAPI app: CORS, lifespan, include_router calls
+api/routers/            endpoints by purpose: system, retrieval, query, images
+api/openapi_examples.py docs text and example payloads shown at /docs
 api/service.py          RAGService: owns the store and retriever for the process
 api/custom_service.py   /query/custom: same retrieval, user-chosen LLM
 api/images.py           in-memory registry that serves figure JPEGs by URL
