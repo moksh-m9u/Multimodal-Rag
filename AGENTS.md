@@ -168,8 +168,8 @@ Recorded so no agent re-opens them. Dates are when the owner decided.
 - 2026-11-12: **Postgres + pgvector** replaces Chroma and also holds application data (documents, chats, cache, and later users). Existing chunks, summaries, and embeddings are copied across; nothing is re-summarized.
 - 2026-11-12: **API shape changes** (Checkpoint 2):
   - remove `images_base64` from responses;
-  - serve figures from disk at stable URLs `/images/{chunk_id}/{position}`;
-  - merge `/query` and `/query/custom` into one `POST /query` with an optional `llm: {provider, model, api_key}` object;
+  - serve figures from disk at stable URLs `/v1/images/{record_id}/{position}`, where `record_id` is the Chroma record UUID. The server looks the file path up in the store and never takes a path from the URL. Changed on 2026-11-14 from `{chunk_id}`: the stored `chunk_id` restarts at 1 in every document (78 distinct values across 270 records), so it cannot identify a figure;
+  - merge `/query` and `/query/custom` into one `POST /query` with an optional `llm: {provider, model, api_key, temperature?, max_tokens?}` object. `api_key` is required whenever `llm` is present, so a caller cannot run the server's own key against a model of their choice. A reasoning field is added with the native reasoning control, not before (2026-11-14);
   - add `POST /query/stream` for streaming;
   - return real HTTP errors, with 502 when the LLM provider fails.
 - 2026-11-13: **`/v1` prefix** on every API endpoint except `/` and `/health`, which stay unversioned for uptime probes. The planned endpoint list is in `docs/TRADEOFFS.md`, section 8.
@@ -205,6 +205,7 @@ Each checkpoint is a set of small commits. Finish one, let the owner test and pu
 **Checkpoint 2. Backend structure.**
 - Split `api/main.py` into `api/routers/system.py`, `retrieval.py`, `query.py`, `images.py`. `main.py` keeps only app creation, CORS, the lifespan, and `include_router` calls.
 - Merge the default and custom generation paths into one function that receives an LLM.
+- Fix the prompt so the text of every retrieved chunk reaches it, not only the first 5, while images already come from all chunks. Moved here from Checkpoint 3 on 2026-11-14: figure labels (`[F1]`) must not point at chunks whose text the model never saw, and after the merge the fix is in one place.
 - Apply the agreed API changes, including the `/v1` prefix (see Decisions made). These are breaking, so update `app/api_client.py` and `API.md` in the same checkpoint.
 - Replace `_create_llm_for_model` in `api/custom_service.py` with a factory in `src/` that chooses the client by provider id, not by model-name prefix. Every provider's `base_url` lives in `config/providers.py`, including Groq's. An unknown provider is rejected instead of silently going to Groq.
 - Prune the model catalogue. On 2026-11-13, 5 of the 9 Groq models listed (`llama-3.3-70b-versatile`, `llama-3.1-8b-instant`, `qwen/qwen3.6-27b`, `groq/compound`, `groq/compound-mini`) returned 404 for the owner's key. Consider checking against each provider's `/models` endpoint.
@@ -216,7 +217,7 @@ Each checkpoint is a set of small commits. Finish one, let the owner test and pu
 - Docstrings everywhere, remove all banner comments (about 75).
 - Split `src/retrieval/generate.py` into prompt building, the LLM factory, and streaming.
 - Fix:
-  - only the first 5 chunks' text reaches the prompt while images come from all chunks;
+  - only the first 5 chunks' text reaches the prompt while images come from all chunks (moved to Checkpoint 2 on 2026-11-14);
   - streamed usage tokens reporting 0;
   - cost estimates hardcoded to Gemini prices.
 
@@ -235,6 +236,7 @@ Each checkpoint is a set of small commits. Finish one, let the owner test and pu
 **Checkpoint 6. Postgres + pgvector.** Host: Railway Postgres, tentatively; confirm before starting.
 - Schema for documents, chunks (with `vector(768)`), images, queries, retrievals, answers, and feedback, with Alembic migrations.
 - A one-off script copies ids, summaries, embeddings, and metadata out of Chroma into Postgres. No summarizer and no re-embedding.
+- Each Chroma record id becomes the chunk's primary key, stored as the Postgres `uuid` type, unchanged. Figure URLs (`/v1/images/{record_id}/{position}`) contain this id, so generating new ids would break every figure link a client holds.
 - Swap the retriever to pgvector and confirm the evaluation numbers match Chroma's.
 - Remove Chroma once they match.
 

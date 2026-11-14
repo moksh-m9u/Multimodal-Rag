@@ -241,7 +241,7 @@ The custom-provider path duplicates the default path today. Both become one func
 |---|---|---|
 | Routers in `api/routers/` | Each file explains one area; `main.py` reads as a table of contents | None; paths stay the same |
 | Remove `images_base64` from responses | Responses shrink by megabytes; the UI already loads images by URL | Breaking for clients that read base64 |
-| Stable image URLs `/images/{chunk_id}/{position}`, served straight from disk | Cacheable, survive restarts, work across replicas; deletes `ImageRegistry` and its memory growth | Breaking for clients that stored old URLs |
+| Stable image URLs `/v1/images/{record_id}/{position}`, served straight from disk | Cacheable, survive restarts, work across replicas; deletes `ImageRegistry` and its memory growth | Breaking for clients that stored old URLs |
 | One `POST /query` with an optional `llm: {provider, model, api_key}` object, replacing `/query` and `/query/custom` | One code path to explain and test; the default LLM is used when `llm` is absent | Breaking for `/query/custom` callers |
 | `POST /query/stream` with the same body as `/query` | Long questions and options do not belong in a URL (logs, length limits); one schema for both | Browser `EventSource` supports only GET, so clients read the stream with `fetch` or `httpx` |
 | Real HTTP errors: 422 for bad input, 404 for unknown images or models, 502 when the LLM provider fails, 503 when the store is not ready | Clients and monitoring can tell failure from an answer; the UI can show the reason | The UI must handle error codes |
@@ -259,7 +259,7 @@ The API key in the `llm` object travels in the request body over HTTPS. It must 
 | `POST /v1/retrieve` | `POST /retrieve` | 2 | Chunks only, no answer |
 | `POST /v1/query` | `POST /query` and `POST /query/custom` | 2 | Chunks plus an answer. An optional `llm` object picks the model; without it the default Gemini model is used |
 | `POST /v1/query/stream` | `GET /query/stream` | 2 | Same body as `/v1/query`, answer streamed over SSE |
-| `GET /v1/images/{chunk_id}/{position}` | `GET /images/{response_id}/{index}` | 2 | One figure as JPEG, read from disk |
+| `GET /v1/images/{record_id}/{position}` | `GET /images/{response_id}/{index}` | 2 | One figure as JPEG, read from disk |
 | `GET /v1/providers` | the UI importing `config/providers.py` | 4 | Providers and their models, for the model picker |
 | `GET /v1/documents` | the UI reading `json/` | 4 | Indexed documents with chunk counts |
 | `GET /v1/documents/{document_id}/chunks` | the UI reading `json/` | 4 | Every chunk of one document, for the chunk explorer |
@@ -288,9 +288,9 @@ Response changes:
   - `query_id` (Checkpoint 6), to attach feedback;
   - `cached` (Checkpoint 8);
   - `score`, `document`, and `page` on each chunk;
-  - `image_urls` built from `chunk_id`.
+  - `image_urls` built from `record_id`.
 
-`chunk_id` must be globally unique: the store's record id, not the 1-based position the response uses today.
+`record_id` is the store's record id, a UUID, so it is globally unique. Neither `chunk_id` can key a figure: the stored one restarts at 1 in every document (78 distinct values across 270 records), and the one in the response is a 1-based position within that response.
 
 Stream events for `/v1/query/stream`:
 
@@ -431,7 +431,7 @@ Why not `bytea` columns in Postgres:
 
 Postgres can store binaries, and for a few hundred small JPEGs it would work. It just stops scaling at exactly the moment uploads start.
 
-The URL is what stays stable, not the storage. `GET /v1/images/{chunk_id}/{position}` is the contract. Behind it:
+The URL is what stays stable, not the storage. `GET /v1/images/{record_id}/{position}` is the contract. Behind it:
 - **Checkpoint 2:** the handler builds the file path from the chunk's stored `image_paths`.
 - **Checkpoint 6:** it looks up `storage_key` in the `images` table.
 - **Checkpoint 7:** it may redirect (307) to a short-lived signed object-storage URL.
