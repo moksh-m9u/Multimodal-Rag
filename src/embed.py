@@ -56,6 +56,6 @@ def load_embedding_model() -> WatsonxEmbeddings:
         model_id=EMBEDDING_MODEL,
         url=WATSONX_URL,
         project_id=WATSONX_PROJECT_ID,
-        apikey=WATSONX_API_KEY,
+        api_key=WATSONX_API_KEY,
         params={"truncate_input_tokens": EMBEDDING_MAX_INPUT_TOKENS},
     )
