@@ -36,6 +36,16 @@ Plain-language explanations of the technical terms used in this repository. Each
 
 **Lifespan.** The FastAPI hook that runs code once when the server starts and once when it stops. Here it loads the embedding client and the vector store a single time instead of per request. `api/main.py`.
 
+**Router (`APIRouter`).** A FastAPI object that collects endpoints in a module that does not have the app. `@router.get(...)` only records a route; `app.include_router(router)` copies the routes into the app, adding the router's `prefix` and `tags`. Here: one router per file in `api/routers/`.
+
+**Path parameter.** A `{name}` part of a route's path, such as `{index}` in `/images/{response_id}/{index}`. FastAPI passes it to the function parameter with the same name and converts it with that parameter's type hint, returning 422 when the conversion fails.
+
+**MIME type (media type).** A standard label for a kind of content, such as `image/jpeg` or `application/json`, registered with IANA. The server sends it in the `Content-Type` header so the client knows how to read the bytes.
+
+**OpenAPI.** A standard JSON description of an HTTP API: its paths, parameters, request and response shapes, and examples. FastAPI generates it from the routes and Pydantic models and serves it at `/openapi.json`.
+
+**Swagger UI.** The interactive page at `/docs` that FastAPI builds from the OpenAPI schema, where each endpoint can be tried in the browser. Its Examples dropdown comes from `Body(openapi_examples=...)`; here those examples live in `api/openapi_examples.py`.
+
 **SSE (Server-Sent Events).** A way for a server to send a stream of small messages over one HTTP response. Used to stream the answer token by token from `/query/stream`.
 
 **Event loop.** The single thread that runs all `async` endpoints in FastAPI. Blocking work on it stalls every request, which is why synchronous LangChain calls run in `asyncio.to_thread`.

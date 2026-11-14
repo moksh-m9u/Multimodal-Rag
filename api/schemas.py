@@ -1,7 +1,8 @@
 """Pydantic request/response models for the FastAPI layer.
 
-Every model carries rich descriptions and real-world examples so the OpenAPI
-docs (``/docs``) are self-explanatory and instantly try-able.
+Every field carries a description and a sample value, and every response
+model an example, so the OpenAPI docs (``/docs``) explain themselves. Whole
+request-body examples live with the routes, in ``api/openapi_examples.py``.
 """
 
 from __future__ import annotations
@@ -9,20 +10,6 @@ from __future__ import annotations
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
-
-# ---------------------------------------------------------------------------
-# Shared request examples (used across all query-style endpoints)
-# ---------------------------------------------------------------------------
-QUERY_EXAMPLES: list[dict] = [
-    {
-        "query": "Tell me about the pin configuration of the LM2596.",
-        "top_k": 10,
-    },
-    {
-        "query": "Tell me about the pin configuration of the LM317.",
-        "top_k": 5,
-    },
-]
 
 
 class QueryRequest(BaseModel):
@@ -64,19 +51,9 @@ class QueryRequest(BaseModel):
         examples=[10],
     )
 
-    model_config = ConfigDict(json_schema_extra={"examples": QUERY_EXAMPLES})
-
 
 class RetrieveRequest(QueryRequest):
     """Same shape as :class:`QueryRequest`; used by the retrieve-only endpoint."""
-
-    model_config = ConfigDict(
-        json_schema_extra={
-            "examples": [
-                {"query": "Tell me about the pin configuration of the LM2596.", "top_k": 10}
-            ]
-        }
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -340,22 +317,6 @@ class CustomQueryRequest(BaseModel):
             "When true, asks the model to output its reasoning in <think> tags. "
             "Works with models that support chain-of-thought (DeepSeek R1, QwQ, etc.)."
         ),
-    )
-
-    model_config = ConfigDict(
-        json_schema_extra={
-            "examples": [
-                {
-                    "query": "Tell me about the pin configuration of the LM2596.",
-                    "top_k": 10,
-                    "provider": "gemini",
-                    "model": "gemini-3.5-flash-lite",
-                    "api_key": "YOUR_API_KEY_HERE",
-                    "temperature": 0.0,
-                    "max_tokens": 512,
-                }
-            ]
-        }
     )
 
 

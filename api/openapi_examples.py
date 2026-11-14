@@ -6,16 +6,34 @@ is handled; it only shapes the OpenAPI schema FastAPI generates.
 
 from __future__ import annotations
 
-REQUEST_BODY_EXAMPLES = [
-    {
+# Named examples for request bodies, in the shape FastAPI's
+# ``Body(openapi_examples=...)`` expects: each key is one entry in the
+# Examples dropdown on /docs, ``summary`` is its label, ``value`` the payload.
+QUERY_BODY_EXAMPLES = {
+    "lm2596_pins": {
         "summary": "LM2596 pin configuration",
         "value": {"query": "Tell me about the pin configuration of the LM2596.", "top_k": 10},
     },
-    {
+    "lm317_pins": {
         "summary": "LM317 pin configuration",
         "value": {"query": "Tell me about the pin configuration of the LM317.", "top_k": 5},
     },
-]
+}
+
+CUSTOM_QUERY_BODY_EXAMPLES = {
+    "gemini": {
+        "summary": "Custom Gemini query",
+        "value": {
+            "query": "Tell me about the pin configuration of the LM2596.",
+            "top_k": 10,
+            "provider": "gemini",
+            "model": "gemini-3.5-flash-lite",
+            "api_key": "YOUR_GEMINI_API_KEY",
+            "temperature": 0.0,
+            "max_tokens": 512,
+        },
+    },
+}
 
 QUERY_PARAM_EXAMPLES = [
     "Tell me about the pin configuration of the LM2596.",
@@ -45,30 +63,3 @@ Every response includes a `response_id`; chunk figures can be loaded over
 HTTP via `GET /images/{response_id}/{index}`.
 """
 
-
-def request_body_examples(schema_name: str, examples: list[dict]) -> dict:
-    """Build an ``openapi_extra`` requestBody with a named Examples dropdown.
-
-    Args:
-        schema_name: The Pydantic model name the body refers to.
-        examples: Items of the form ``{"summary": str, "value": dict}``.
-
-    Returns:
-        A dict to pass as a route's ``openapi_extra``.
-    """
-    return {
-        "requestBody": {
-            "content": {
-                "application/json": {
-                    "schema": {"$ref": f"#/components/schemas/{schema_name}"},
-                    "examples": {
-                        f"example_{i + 1}": {
-                            "summary": ex.get("summary", f"Example {i + 1}"),
-                            "value": ex.get("value", ex),
-                        }
-                        for i, ex in enumerate(examples)
-                    },
-                }
-            }
-        }
-    }

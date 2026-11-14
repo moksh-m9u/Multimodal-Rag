@@ -8,16 +8,17 @@ the provider, model, and API key.
 from __future__ import annotations
 
 import json
+from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, Body, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 
 from api.custom_service import run_custom_query
 from api.openapi_examples import (
+    CUSTOM_QUERY_BODY_EXAMPLES,
+    QUERY_BODY_EXAMPLES,
     QUERY_PARAM_EXAMPLES,
-    REQUEST_BODY_EXAMPLES,
     RICH_DESCRIPTION_COMMON,
-    request_body_examples,
 )
 from api.schemas import CustomQueryRequest, CustomQueryResponse, QueryRequest, QueryResponse
 from src.retrieval.generate import answer_query_stream
@@ -42,9 +43,11 @@ router = APIRouter(tags=["generation"])
     )
     + RICH_DESCRIPTION_COMMON,
     response_description="Retrieved chunks plus the generated answer",
-    openapi_extra=request_body_examples("QueryRequest", REQUEST_BODY_EXAMPLES),
 )
-async def query(request: Request, req: QueryRequest) -> QueryResponse:
+async def query(
+    request: Request,
+    req: Annotated[QueryRequest, Body(openapi_examples=QUERY_BODY_EXAMPLES)],
+) -> QueryResponse:
     """Retrieve chunks and generate a full answer from the multimodal LLM."""
     try:
         answer, base, usage = await request.app.state.service.answer(req.query, req.top_k, req.max_images)
@@ -155,22 +158,11 @@ async def query_stream(
         "- ``query``, ``top_k``, ``temperature``, ``max_tokens`` as usual"
     ),
     response_description="Retrieved chunks plus the generated answer with usage metadata",
-    openapi_extra=request_body_examples("CustomQueryRequest", [
-        {
-            "summary": "Custom Gemini query",
-            "value": {
-                "query": "Tell me about the pin configuration of the LM2596.",
-                "top_k": 10,
-                "provider": "gemini",
-                "model": "gemini-3.5-flash-lite",
-                "api_key": "YOUR_GEMINI_API_KEY",
-                "temperature": 0.0,
-                "max_tokens": 512,
-            },
-        },
-    ]),
 )
-async def query_custom(request: Request, req: CustomQueryRequest) -> CustomQueryResponse:
+async def query_custom(
+    request: Request,
+    req: Annotated[CustomQueryRequest, Body(openapi_examples=CUSTOM_QUERY_BODY_EXAMPLES)],
+) -> CustomQueryResponse:
     """Retrieve chunks and generate an answer with a custom provider/model/key."""
     try:
         answer, base, usage = await run_custom_query(
